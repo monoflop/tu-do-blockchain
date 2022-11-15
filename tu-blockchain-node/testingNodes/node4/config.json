@@ -1,0 +1,13 @@
+{
+  "name":"node4",
+  "port":8003,
+  "privateKeyFilePath":"private.der",
+  "publicKeyFilePath":"public.der",
+  "blockchainFilePath":"blockchain.json",
+  "knownPeers": [
+    {
+      "ip":"127.0.0.1",
+      "port": 8000
+    }
+  ]
+}

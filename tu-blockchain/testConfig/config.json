@@ -1,0 +1,10 @@
+{
+  "nodeList": [
+    {
+      "id":"node1",
+      "type":"normal",
+      "privateKeyFile":"testConfig/node1Private.der",
+      "publicKeyFile":"testConfig/node1Public.der"
+    }
+  ]
+}

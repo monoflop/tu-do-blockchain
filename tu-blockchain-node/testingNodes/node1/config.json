@@ -1,0 +1,10 @@
+{
+  "name":"node1",
+  "port":8000,
+  "privateKeyFilePath":"private.der",
+  "publicKeyFilePath":"public.der",
+  "blockchainFilePath":"blockchain.json",
+  "knownPeers": [
+
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "blockchainFile":null,
+  "nodeList": [
+    {
+      "id":"node1",
+      "type":"normal",
+      "privateKeyFile":"testKeys/node1Private.der",
+      "publicKeyFile":"testKeys/node1Public.der"
+    }
+  ]
+}
