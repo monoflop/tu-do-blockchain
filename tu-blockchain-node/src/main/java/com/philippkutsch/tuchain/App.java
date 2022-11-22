@@ -2,10 +2,16 @@ package com.philippkutsch.tuchain;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.LoggerContext;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.gson.Gson;
 import com.google.gson.JsonParseException;
+import com.philippkutsch.tuchain.chain.*;
+import com.philippkutsch.tuchain.chain.utils.ChainUtils;
 import com.philippkutsch.tuchain.config.Config;
 import com.philippkutsch.tuchain.network.RemoteNode;
+import com.philippkutsch.tuchain.network.protocol.PingMessage;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -21,7 +27,10 @@ import java.io.InputStreamReader;
 import java.nio.file.Files;
 import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
 
 public class App {
     private static final Logger logger
@@ -39,6 +48,9 @@ public class App {
         parser.addArgument("-d", "--directory")
                 .setDefault(".")
                 .help("Specify working directory");
+        parser.addArgument("-g", "--genesis")
+                .action(Arguments.storeTrue())
+                .help("Generate genesis block only");
         parser.addArgument("-v", "--verbose")
                 .action(Arguments.storeTrue())
                 .help("Log everything");
@@ -95,30 +107,75 @@ public class App {
                     new File(workingDirectory, config.getPrivateKeyFilePath()).getPath());
         }
         catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
-            e.printStackTrace();
+            logger.error("Failed to load rsa keys", e);
             return;
         }
 
-
-
-        /*int listenPort = namespace.getInt("port");
-        String name = UUID.randomUUID().toString();
-        logger.info("Starting network node " + name +" on port " + listenPort);
-
-        //TODO read config
-        List<Peer> knownPeers = new ArrayList<>();
-        //Only add peers if not specified otherwise
-        if(!namespace.getBoolean("master")) {
-            knownPeers.add(new Peer("localhost", 8000));
+        //Load blockchain
+        File blockchainFile = new File(workingDirectory, config.getBlockchainFilePath());
+        Blockchain blockchain = null;
+        if(blockchainFile.exists()) {
+            try {
+                String blockchainJson = Files.readString(blockchainFile.toPath());
+                blockchain = ChainUtils.decodeFromString(blockchainJson, Blockchain.class);
+            }
+            catch (IOException | JsonParseException e) {
+                logger.error("Failed to read blockchain from file", e);
+                return;
+            }
         }
-        Config config = new Config(name, knownPeers);*/
+        else {
+            if(!namespace.getBoolean("genesis")) {
+                throw new IllegalStateException("No blockchain found. A blockchain with an genesis block is required");
+            }
+        }
 
+        //Generate genesis block and save to blockchain
+        if (namespace.getBoolean("genesis")) {
+            logger.info("Generating genesis block");
+            try {
+                //Generate
+                ListeningExecutorService service = MoreExecutors.
+                        listeningDecorator(Executors.newCachedThreadPool());
+
+                ListenableFuture<HashedBlock> hashedBlockFuture = service.submit(new Miner(
+                        new Block(1, new byte[]{}, new BlockBody(new SignedTransaction[]{})),
+                        new HashPerformanceAnalyser()
+                ));
+                HashedBlock hashedBlock = hashedBlockFuture.get();
+                logger.info("Generated genesis block " + ChainUtils.encodeToString(hashedBlock));
+
+                //Export to blockchain
+                List<HashedBlock> blockList = new ArrayList<>();
+                blockList.add(hashedBlock);
+                Blockchain exportChain = new Blockchain(blockList);
+                Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(exportChain));
+
+                //Shutdown
+                service.shutdown();
+            }
+            catch (IOException | InterruptedException | ExecutionException e) {
+                logger.error("Failed to generate / save genesis block", e);
+            }
+            return;
+        }
+
+        //Build and start node
         logger.info("Starting network node " + config.getName() +" on port " + config.getPort());
+        Node node;
+        try {
+            //noinspection ConstantConditions
+            node = new Node(config, rsaKeys, blockchain);
+        }
+        catch (IOException e) {
+            logger.error("Failed to create node", e);
+            return;
+        }
 
-        Node node = new Node(config, rsaKeys);
+        //Listen for input
         BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in));
-        logger.info("Waiting for input (exit, nodes):");
+        logger.info("Waiting for input (exit, nodes, broadcast, save):");
         try {
             for (String cmd = reader.readLine(); cmd != null; cmd = reader.readLine()) {
                 String[] input = cmd.split(" ");
@@ -129,18 +186,22 @@ public class App {
                 else if("nodes".equals(input[0])) {
                     logger.info("Connected nodes:");
                     //Get node list
-                    List<RemoteNode> nodes = node.getNetwork().getNodes();
-                    for(RemoteNode remoteNode : nodes) {
-                        logger.info("Node '" + remoteNode.getName() + "' " + remoteNode.getConnection().getAddress()
-                                + ":" + remoteNode.getConnection().getPort() + " listen: " + remoteNode.getListenPort());
+                    List<RemoteNode> connectedNodeList = node.getNetwork().getConnectedNodes();
+                    for(RemoteNode connectedNode : connectedNodeList) {
+                        logger.info("Node '" + connectedNode.getConnectedNode().getName() + "' " + connectedNode.getConnectedNode().getHost()
+                                + ":" + connectedNode.getConnectedNode().getPort());
                     }
-
-                    logger.info("Pending nodes:");
-                    //Get node list
-                    List<RemoteNode> pendingNodeList = node.getNetwork().getPendingNodeList();
-                    for(RemoteNode remoteNode : pendingNodeList) {
-                        logger.info("Node '" + remoteNode.getName() + "' " + remoteNode.getConnection().getAddress()
-                                + ":" + remoteNode.getConnection().getPort() + " listen: " + remoteNode.getListenPort());
+                }
+                else if("broadcast".equals(input[0])) {
+                    node.getNetwork().broadcast(new PingMessage().encode());
+                }
+                else if("save".equals(input[0])) {
+                    try {
+                        Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(node.blockchain));
+                        logger.info("Chain saved!");
+                    }
+                    catch (IOException e) {
+                        logger.error("Failed to save blockchain", e);
                     }
                 }
                 else {
@@ -150,7 +211,7 @@ public class App {
             reader.close();
         }
         catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Waiting for input failed", e);
         }
 
         try {

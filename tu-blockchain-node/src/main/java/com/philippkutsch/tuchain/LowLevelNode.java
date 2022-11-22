@@ -2,6 +2,7 @@ package com.philippkutsch.tuchain;
 
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import com.philippkutsch.tuchain.chain.Blockchain;
 import com.philippkutsch.tuchain.config.Config;
 import com.philippkutsch.tuchain.network.Network;
 import org.slf4j.Logger;
@@ -23,10 +24,15 @@ public abstract class LowLevelNode implements Network.Listener {
     protected final Config config;
     protected final RsaKeys rsaKeys;
     protected final Network network;
+    protected final Blockchain blockchain;
 
-    public LowLevelNode(@Nonnull Config config, @Nonnull RsaKeys rsaKeys) {
+    public LowLevelNode(@Nonnull Config config,
+                        @Nonnull RsaKeys rsaKeys,
+                        @Nonnull Blockchain blockchain)
+            throws IOException {
         this.config = config;
         this.rsaKeys = rsaKeys;
+        this.blockchain = blockchain;
 
         //Startup
         this.executorService = Executors.newCachedThreadPool();

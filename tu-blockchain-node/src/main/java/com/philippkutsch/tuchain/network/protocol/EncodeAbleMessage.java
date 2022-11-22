@@ -5,7 +5,7 @@ import com.philippkutsch.tuchain.chain.utils.ChainUtils;
 import javax.annotation.Nonnull;
 
 public abstract class EncodeAbleMessage {
-    private final String type;
+    private final transient String type;
 
     public EncodeAbleMessage(@Nonnull String type) {
         this.type = type;

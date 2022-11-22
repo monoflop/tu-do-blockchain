@@ -1,5 +1,9 @@
 package com.philippkutsch.tuchain.network;
 
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -9,53 +13,83 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.net.Socket;
 import java.util.Scanner;
+import java.util.concurrent.Callable;
 
-public class NetworkConnection implements Runnable {
+public class NetworkConnection implements Callable<Void>, FutureCallback<Void> {
     private static final String ESCAPE_DELIMITER = "\n";
     private static final Logger logger
             = LoggerFactory.getLogger(NetworkConnection.class);
 
     private final Socket socket;
     private final Listener listener;
-    private PrintWriter printWriter;
-    private InputStream inputStream;
-    private boolean hasError;
+    private final ListenableFuture<Void> socketReadingFuture;
+    private final PrintWriter printWriter;
+    private final InputStream inputStream;
+    private final Scanner scanner;
 
-    public NetworkConnection(@Nonnull Socket socket,
-                             @Nonnull Listener listener) {
+    private boolean isShuttingDown;
+
+    public NetworkConnection(
+            @Nonnull ListeningExecutorService service,
+            @Nonnull Socket socket,
+            @Nonnull Listener listener)
+            throws IOException {
         this.socket = socket;
         this.listener = listener;
-        this.hasError = false;
+
+        //Setup socket
+        this.printWriter = new PrintWriter(socket.getOutputStream(), true);
+        this.inputStream = socket.getInputStream();
+        this.scanner = new Scanner(inputStream).useDelimiter(ESCAPE_DELIMITER);
+
+        //Start listening for incoming messages
+        this.socketReadingFuture = service.submit(this);
+        Futures.addCallback(this.socketReadingFuture, this, service);
+
+        isShuttingDown = false;
     }
 
+    /**
+     * Setup socket connection and listen for incoming messages.
+     * Executed on a seperate thread, because scanner is blocking
+     */
     @Override
-    public void run() {
-        try {
-            printWriter = new PrintWriter(socket.getOutputStream(), true);
-            inputStream = socket.getInputStream();
+    public Void call() throws Exception {
+        while (scanner.hasNext()) {
+            String result = scanner.next();
+            listener.onMessage(this, result);
+        }
+        return null;
+    }
 
-            Scanner scanner = new Scanner(inputStream).useDelimiter(ESCAPE_DELIMITER);
-            while (scanner.hasNext()) {
-                String result = scanner.next();
-                listener.onMessage(result);
-            }
-            listener.onDisconnected();
+    /**
+     * Reading future ended
+     */
+    @Override
+    public void onSuccess(Void unused) {
+        listener.onDisconnected(this);
+    }
+
+    /**
+     * Reading future exception
+     */
+    @Override
+    public void onFailure(@Nonnull Throwable throwable) {
+        //Only redirect error if connection is not already shutting down
+        if(!isShuttingDown) {
+            logger.error("Reading error", throwable);
+            listener.onDisconnected(this);
         }
-        catch (IOException e) {
-            logger.error("Connection problem", e);
-            hasError = true;
-            listener.onDisconnected();
-        }
+
     }
 
     public void send(@Nonnull String message) throws IOException {
-        if(hasError || printWriter == null) {
-            throw new IOException("Disconnected or in error state");
-        }
         printWriter.printf(message + ESCAPE_DELIMITER);
     }
 
     public void shutdown() throws IOException {
+        isShuttingDown = true;
+        socketReadingFuture.cancel(true);
         inputStream.close();
         printWriter.close();
         socket.close();
@@ -69,8 +103,13 @@ public class NetworkConnection implements Runnable {
         return socket.getInetAddress().getHostAddress();
     }
 
+    @Nonnull
+    public String getKey() {
+        return socket.getInetAddress().getHostAddress() + ":" + socket.getPort();
+    }
+
     public interface Listener {
-        void onMessage(@Nonnull String message);
-        void onDisconnected();
+        void onMessage(@Nonnull NetworkConnection connection, @Nonnull String message);
+        void onDisconnected(@Nonnull NetworkConnection connection);
     }
 }

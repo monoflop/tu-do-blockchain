@@ -1,258 +1,140 @@
 package com.philippkutsch.tuchain.network;
 
-import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
+import com.philippkutsch.tuchain.chain.utils.ChainUtils;
 import com.philippkutsch.tuchain.config.Peer;
 import com.philippkutsch.tuchain.network.protocol.Message;
-import com.philippkutsch.tuchain.network.protocol.network.HandshakeMessage;
-import com.philippkutsch.tuchain.network.protocol.network.NewNodeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
 import java.io.IOException;
-import java.net.Socket;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Optional;
-import java.util.concurrent.Semaphore;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 
-//TODO fix handshake and connection issue
-public class Network implements NetworkServer.Listener {
+public class Network implements NodeManager.Listener {
     private static final Logger logger
             = LoggerFactory.getLogger(Network.class);
 
-    private final String name;
-    private final int listeningPort;
-    private final ListeningExecutorService service;
     private final Listener listener;
-    private final NetworkServer networkServer;
-    private final ListenableFuture<?> networkListeningFuture;
-    private final List<RemoteNode> remoteNodeList;
-    private final List<RemoteNode> pendingNodeList;
-    private final Semaphore remoteNodeListLock;
+    private final NodeManager nodeManager;
+    private final Map<String, RemoteNode> nodeMap;
+    private final Map<String, Receiver> listenMap;
 
-    public Network(@Nonnull String name,
-                   int listeningPort,
-                   @Nonnull ListeningExecutorService service,
-                   @Nonnull Listener listener,
-                   @Nonnull List<Peer> initialPeers) {
-        this.name = name;
-        this.listeningPort = listeningPort;
-        this.service = service;
+    public Network(
+            @Nonnull String name,
+            int listeningPort,
+            @Nonnull ListeningExecutorService service,
+            @Nonnull Listener listener,
+            @Nonnull List<Peer> initialPeers)
+            throws IOException {
         this.listener = listener;
-        this.networkServer = new NetworkServer(listeningPort, this);
-        this.remoteNodeList = new ArrayList<>();
-        this.pendingNodeList = new ArrayList<>();
-        this.remoteNodeListLock = new Semaphore(1, true);
+        this.nodeManager = new NodeManager(service, name, "127.0.0.1", listeningPort, initialPeers, this);
+        this.nodeMap = new ConcurrentHashMap<>();
+        this.listenMap = new ConcurrentHashMap<>();
+    }
 
-        //Start listening
-        networkListeningFuture = service.submit(() -> {
-            try {
-                networkServer.startListen();
+    public void broadcast(
+            @Nonnull Message message,
+            @Nonnull RemoteNode... exclude) {
+        for(Map.Entry<String, RemoteNode> entry : nodeMap.entrySet()) {
+            boolean skip = false;
+            for(RemoteNode excludeNode : exclude) {
+                if(entry.getKey().equals(excludeNode.getKey())) {
+                    skip = true;
+                    break;
+                }
             }
-            catch (IOException e) {
-                logger.error("Listening failed", e);
-            }
-        });
 
-        //Try to connect to initial peers
-        for(Peer peer : initialPeers) {
-            service.submit(() -> {
-                logger.debug("Trying to connect well known peer " + peer.getIp() + ":" + peer.getPort());
-                tryConnect(peer.getIp(), peer.getPort());
-            });
+            if(!skip) {
+                send(entry.getValue(), message);
+            }
         }
     }
 
-    public void broadcast(@Nonnull Message message, @Nullable RemoteNode ignoreNode) {
-        for(RemoteNode node : remoteNodeList) {
-            if(ignoreNode != null && ignoreNode.getName().equals(node.getName())) {
-                continue;
-            }
+    public void send(@Nonnull RemoteNode node, @Nonnull Message message) {
+        logger.debug("Sending message to " + node.getKey() + " " + ChainUtils.encodeToString(message));
+        nodeManager.send(node.getConnectedNode(), message);
+    }
 
-            if(node.isAuthenticated()) {
-                node.send(message);
-            }
+    @Nonnull
+    public CompletableFuture<Message> sendAndReceive(
+            @Nonnull RemoteNode node,
+            @Nonnull Message message,
+            @Nonnull String expectedType) {
+        CompletableFuture<Message> completableFuture = new CompletableFuture<>();
+        Receiver receiver = new Receiver(expectedType, completableFuture);
+        listenMap.put(node.getKey(), receiver);
+        send(node, message);
+        return completableFuture;
+    }
+
+    @Nonnull
+    public List<RemoteNode> getConnectedNodes() {
+        List<RemoteNode> connectedNodeList = new ArrayList<>();
+        for(Map.Entry<String, RemoteNode> entry : nodeMap.entrySet()) {
+            connectedNodeList.add(entry.getValue());
         }
+        return connectedNodeList;
     }
 
     public void shutdown() throws IOException {
-        networkListeningFuture.cancel(true);
-        for(RemoteNode node : pendingNodeList) {
-            node.shutdown();
-        }
-        for(RemoteNode node : remoteNodeList) {
-            node.shutdown();
-        }
-    }
-
-    public void tryConnect(String host, int port) {
-        Optional<Socket> socketOptional = RemoteNode.tryConnect(host, port);
-        if(socketOptional.isPresent()) {
-            RemoteNode node = new RemoteNode(
-                    socketOptional.get(),
-                    this::onUnauthenticatedNodeMessage,
-                    this::onUnauthenticatedNodeDisconnected);
-            service.submit(node);
-            pendingNodeList.add(node);
-        }
+        nodeManager.shutdown();
     }
 
     @Override
-    public void onSocketConnected(@Nonnull Socket socket) {
-        RemoteNode node = new RemoteNode(
-                socket,
-                this::onUnauthenticatedNodeMessage,
-                this::onUnauthenticatedNodeDisconnected);
-        service.submit(node);
-        pendingNodeList.add(node);
-
-        //Send handshake message
-        service.submit(() -> {
-            List<Peer> knownPeers = new ArrayList<>();
-            for(RemoteNode knownNode : remoteNodeList) {
-                knownPeers.add(new Peer(knownNode.getConnection().getAddress(), knownNode.getListenPort()));
-            }
-            HandshakeMessage handshakeMessage = new HandshakeMessage(1, name, listeningPort, knownPeers);
-            node.send(handshakeMessage.encode());
-        });
+    public void onConnected(@Nonnull ConnectedNode connectedNode) {
+        RemoteNode remoteNode = new RemoteNode(connectedNode);
+        nodeMap.put(remoteNode.getKey(), remoteNode);
+        logger.debug("Remote node connected " + remoteNode.getKey());
+        listener.onNodeConnected(remoteNode);
     }
 
-    public void onUnauthenticatedNodeMessage(@Nonnull RemoteNode remoteNode, @Nonnull Message message) {
-        //Only handle handshake
-        if(HandshakeMessage.TYPE.equals(message.getType())) {
-            HandshakeMessage handshakeMessage = message.to(HandshakeMessage.class);
-            remoteNode.setName(handshakeMessage.getName());
-            remoteNode.setListenPort(handshakeMessage.getPort());
-            remoteNode.setAuthenticated(true);
-
-            //Check if the node is already in remoteNodeList
-            if(isAlreadyConnected(handshakeMessage.getName())) {
-                logger.debug("Remote node '" + remoteNode.getName() + "' already connected");
-                try {
-                    remoteNode.shutdown();
-                }
-                catch (IOException e) {
-                    logger.error("Node disconnect failed", e);
-                }
-                return;
-            }
-
-            logger.debug("Remote node '" + remoteNode.getName() + "' connected");
-            remoteNode.updateListener(this::onNodeMessage, this::onNodeDisconnected);
-
-            pendingNodeList.removeIf(node -> node.getName().equals(remoteNode.getName()));
-            remoteNodeList.add(remoteNode);
-
-            //TODO connect to all unknown nodes send with handshake
-            Iterator<Peer> peerIterator = handshakeMessage.getKnownPeers().iterator();
-            while (peerIterator.hasNext()) {
-                Peer peer = peerIterator.next();
-                for(RemoteNode existingNode : remoteNodeList) {
-                    if(existingNode.getConnection().getAddress().equals(peer.getIp())
-                            && existingNode.getListenPort() == peer.getPort()) {
-                        peerIterator.remove();
-                    }
-                }
-
-                //Remove self TODO correct bound address
-                if(peer.getIp().equals("127.0.0.1") && peer.getPort() == listeningPort) {
-                    peerIterator.remove();
-                }
-            }
-            logger.debug("Received " + handshakeMessage.getKnownPeers().size() + " unconnected network nodes");
-            for(Peer peer : handshakeMessage.getKnownPeers()) {
-                logger.debug("Try connect to " + peer.getIp() + ":" + peer.getPort());
-                tryConnect(peer.getIp(), peer.getPort());
-            }
-
-            //Respond with handshake
-            List<Peer> knownPeers = new ArrayList<>();
-            for(RemoteNode knownNode : remoteNodeList) {
-                knownPeers.add(new Peer(knownNode.getConnection().getAddress(), knownNode.getListenPort()));
-            }
-            HandshakeMessage responseHandshakeMessage = new HandshakeMessage(1, name, listeningPort, knownPeers);
-            remoteNode.send(responseHandshakeMessage.encode());
-
-            //Broadcast new node to the network
-            NewNodeMessage newNodeMessage = new NewNodeMessage(
-                    handshakeMessage.getName(),
-                    remoteNode.getConnection().getAddress(),
-                    handshakeMessage.getPort());
-            broadcast(newNodeMessage.encode(), remoteNode);
-        }
+    @Override
+    public void onDisconnected(@Nonnull ConnectedNode connectedNode) {
+        nodeMap.remove(connectedNode.getKey());
+        logger.debug("Remote node disconnected " + connectedNode.getKey());
     }
 
-    public void onNodeMessage(@Nonnull RemoteNode remoteNode, @Nonnull Message message) {
-        if(NewNodeMessage.TYPE.equals(message.getType())) {
-            NewNodeMessage newNodeMessage = message.to(NewNodeMessage.class);
+    @Override
+    public void onMessage(@Nonnull ConnectedNode connectedNode, @Nonnull Message message) {
+        RemoteNode node = nodeMap.get(connectedNode.getKey());
+        if(node != null) {
 
-            //Check if we already know the node
-            for(RemoteNode node : remoteNodeList) {
-                if(newNodeMessage.getName().equals(node.getName()) /*|| (
-                        //Ip and port
-                        node.getConnection().getPort() == newNodeMessage.getPort()
-                                && node.getConnection().getAddress().equals(newNodeMessage.getHost())
-                        )*/) {
-                    logger.debug("Node " + node.getName() + " already known");
+            //Check if message node is in listen map
+            if(listenMap.containsKey(connectedNode.getKey())) {
+                //Check if type is valid
+                Receiver receiver = listenMap.get(connectedNode.getKey());
+                if(receiver.type.equals(message.getType())) {
+                    receiver.future.complete(message);
+                    listenMap.remove(connectedNode.getKey());
                     return;
                 }
             }
 
-            //Try connect
-            tryConnect(newNodeMessage.getHost(), newNodeMessage.getPort());
-
-            //Rebroadcast node to network
-            //broadcast(message, remoteNode);
-
-           /* try {
-                remoteNodeListLock.acquire();
-                try {
-
-                } finally {
-                    remoteNodeListLock.release();
-                }
-            }
-            catch (InterruptedException e) {
-                logger.error("Lock error", e);
-            }*/
+            //Forward message
+            listener.onMessage(node, message);
         }
-        else {
-            listener.onMessage(remoteNode, message);
-        }
-    }
-
-    private boolean isAlreadyConnected(@Nonnull String name) {
-        for(RemoteNode node : remoteNodeList) {
-            if(name.equals(node.getName())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    public void onNodeDisconnected(@Nonnull RemoteNode remoteNode) {
-        remoteNodeList.removeIf(node -> node.getName().equals(remoteNode.getName()));
-    }
-
-    public void onUnauthenticatedNodeDisconnected(@Nonnull RemoteNode remoteNode) {
-        remoteNodeList.removeIf(node -> node.getName().equals(remoteNode.getName()));
-    }
-
-    @Nonnull
-    public List<RemoteNode> getNodes() {
-        return new ArrayList<>(remoteNodeList);
-    }
-
-    @Nonnull
-    public List<RemoteNode> getPendingNodeList() {
-        return pendingNodeList;
     }
 
     public interface Listener {
         void onMessage(@Nonnull RemoteNode remoteNode, @Nonnull Message message);
+        default void onNodeConnected(@Nonnull RemoteNode remoteNode) {
+
+        }
+    }
+
+    private static class Receiver {
+        private final String type;
+        private final CompletableFuture<Message> future;
+
+        public Receiver(@Nonnull String type,
+                        @Nonnull CompletableFuture<Message> future) {
+            this.type = type;
+            this.future = future;
+        }
     }
 }

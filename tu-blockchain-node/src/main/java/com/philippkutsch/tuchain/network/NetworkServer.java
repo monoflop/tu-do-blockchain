@@ -1,41 +1,68 @@
 package com.philippkutsch.tuchain.network;
 
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.ListenableFuture;
+import com.google.common.util.concurrent.ListeningExecutorService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.io.IOException;
-import java.net.ServerSocket;
 import java.net.Socket;
 
-public class NetworkServer {
+public class NetworkServer implements FutureCallback<Socket> {
     private static final Logger logger
             = LoggerFactory.getLogger(NetworkServer.class);
 
-    private final int port;
+    private final ListeningExecutorService service;
+    private final NetworkAcceptor networkAcceptor;
     private final Listener listener;
-    private volatile boolean listening = true;
-    private ServerSocket serverSocket;
 
-    public NetworkServer(int port,
-                         @Nonnull Listener listener) {
-        this.port = port;
+    private ListenableFuture<Socket> serverListenFuture;
+
+    public NetworkServer(
+            @Nonnull ListeningExecutorService service,
+            int listeningPort,
+            @Nonnull Listener listener)
+            throws IOException {
+        this.service = service;
+        this.networkAcceptor = new NetworkAcceptor(listeningPort);
         this.listener = listener;
+        listen();
     }
 
-    public void startListen() throws IOException {
-        this.serverSocket = new ServerSocket(port);
-        while (listening) {
-            listener.onSocketConnected(serverSocket.accept());
+    private void listen() {
+        this.serverListenFuture = service.submit(networkAcceptor);
+        Futures.addCallback(this.serverListenFuture, this, service);
+    }
+
+    public void shutdown() throws IOException {
+        if(serverListenFuture != null) {
+            serverListenFuture.cancel(true);
         }
+        this.networkAcceptor.shutdown();
     }
 
-    public void stopListen() throws IOException {
-        listening = false;
-        serverSocket.close();
+    //New client socket connected
+    @Override
+    public void onSuccess(@Nullable Socket socket) {
+        if(socket == null) {
+            return;
+        }
+        logger.debug("Incoming connection " + socket.getInetAddress() + ":" + socket.getPort());
+        listener.onSocketConnected(true, socket);
+        listen();
+    }
+
+    //Server socket listen exception
+    @Override
+    public void onFailure(@Nonnull Throwable throwable) {
+        logger.error("Connection attempt failed", throwable);
     }
 
     public interface Listener {
-        void onSocketConnected(@Nonnull Socket socket);
+        void onSocketConnected(boolean incoming, @Nonnull Socket socket);
     }
 }
