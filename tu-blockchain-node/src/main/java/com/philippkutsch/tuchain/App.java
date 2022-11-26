@@ -10,8 +10,8 @@ import com.google.gson.JsonParseException;
 import com.philippkutsch.tuchain.chain.*;
 import com.philippkutsch.tuchain.chain.utils.ChainUtils;
 import com.philippkutsch.tuchain.config.Config;
+import com.philippkutsch.tuchain.modules.PingModule;
 import com.philippkutsch.tuchain.network.RemoteNode;
-import com.philippkutsch.tuchain.network.protocol.PingMessage;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
@@ -162,10 +162,10 @@ public class App {
 
         //Build and start node
         logger.info("Starting network node " + config.getName() +" on port " + config.getPort());
-        Node node;
+        TestingNode testingNode;
         try {
             //noinspection ConstantConditions
-            node = new Node(config, rsaKeys, blockchain);
+            testingNode = new TestingNode(config, rsaKeys, blockchain);
         }
         catch (IOException e) {
             logger.error("Failed to create node", e);
@@ -175,7 +175,7 @@ public class App {
         //Listen for input
         BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in));
-        logger.info("Waiting for input (exit, nodes, broadcast, save):");
+        logger.info("Waiting for input (exit, nodes, ping, save):");
         try {
             for (String cmd = reader.readLine(); cmd != null; cmd = reader.readLine()) {
                 String[] input = cmd.split(" ");
@@ -186,18 +186,35 @@ public class App {
                 else if("nodes".equals(input[0])) {
                     logger.info("Connected nodes:");
                     //Get node list
-                    List<RemoteNode> connectedNodeList = node.getNetwork().getConnectedNodes();
+                    List<RemoteNode> connectedNodeList = testingNode.getNetwork().getConnectedNodes();
                     for(RemoteNode connectedNode : connectedNodeList) {
                         logger.info("Node '" + connectedNode.getConnectedNode().getName() + "' " + connectedNode.getConnectedNode().getHost()
                                 + ":" + connectedNode.getConnectedNode().getPort());
                     }
                 }
-                else if("broadcast".equals(input[0])) {
-                    node.getNetwork().broadcast(new PingMessage().encode());
+                else if("ping".equals(input[0])) {
+                    PingModule pingModule = testingNode.requireModule(PingModule.class);
+                    List<RemoteNode> connectedNodes = testingNode.getNetwork().getConnectedNodes();
+
+                    if(connectedNodes.isEmpty()) {
+                        logger.info("No nodes connected");
+                        continue;
+                    }
+
+                    logger.info("Pinging all connected nodes");
+                    for(RemoteNode remoteNode : connectedNodes) {
+                        boolean response = pingModule.pingNode(remoteNode);
+                        if(response) {
+                            logger.info("[.OK.] Node " + remoteNode.getKey());
+                        }
+                        else {
+                            logger.info("[FAIL] Node " + remoteNode.getKey());
+                        }
+                    }
                 }
                 else if("save".equals(input[0])) {
                     try {
-                        Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(node.blockchain));
+                        Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(testingNode.blockchain));
                         logger.info("Chain saved!");
                     }
                     catch (IOException e) {
@@ -215,7 +232,7 @@ public class App {
         }
 
         try {
-            node.shutdown();
+            testingNode.shutdown();
         }
         catch (IOException e) {
             logger.error("Shutdown failed", e);

@@ -12,31 +12,67 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Blockchain {
     private static transient final Logger logger
             = LoggerFactory.getLogger(Blockchain.class);
 
+    private transient final ReadWriteLock lock;
+
     private final List<HashedBlock> blockList;
 
+    //Default constructor for gson only, because gson does not initialise the lock otherwise
+    public Blockchain() {
+        this.blockList = new ArrayList<>();
+        this.lock = new ReentrantReadWriteLock(true);
+    }
+
     public Blockchain(@Nonnull List<HashedBlock> initialState) {
-        assert initialState.size() > 0;
+        if(initialState.size() == 0) {
+            throw new IllegalStateException("Expected blockchain size of at least one");
+        }
+
         this.blockList = new ArrayList<>(initialState);
+        this.lock = new ReentrantReadWriteLock(true);
     }
 
     public void addBlock(@Nonnull HashedBlock hashedBlock) {
-        blockList.add(hashedBlock);
-    }
-
-    @Nonnull
-    public List<HashedBlock> getBlockchain() {
-        return blockList;
+        try {
+            lock.writeLock().lock();
+            blockList.add(hashedBlock);
+        } finally {
+            lock.writeLock().unlock();
+        }
     }
 
     @Nonnull
     public HashedBlock getLastBlock() {
-        return blockList.get(blockList.size() - 1);
+        try {
+            lock.readLock().lock();
+            return blockList.get(blockList.size() - 1);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
+
+    //Dangerous methods
+    public void beginWriteAccess() {
+        lock.writeLock().lock();
+    }
+    public void endWriteAccess() {
+        lock.writeLock().unlock();
+    }
+
+    //Return a copy of the blockchain
+    @Nonnull
+    public List<HashedBlock> getBlockchain() {
+        return new ArrayList<>(blockList);
+    }
+
+
 
     @Nonnull
     public Block buildNextBlock(@Nonnull List<SignedTransaction> transactionList) {
