@@ -3,7 +3,7 @@ package com.philippkutsch.tuchain;
 import com.philippkutsch.tuchain.chain.Blockchain;
 import com.philippkutsch.tuchain.config.Config;
 import com.philippkutsch.tuchain.modules.BlockchainSyncModule;
-import com.philippkutsch.tuchain.modules.MiningModule;
+import com.philippkutsch.tuchain.modules.mining.MiningModule;
 import com.philippkutsch.tuchain.modules.ModuleLoadException;
 import com.philippkutsch.tuchain.modules.PingModule;
 import org.slf4j.Logger;

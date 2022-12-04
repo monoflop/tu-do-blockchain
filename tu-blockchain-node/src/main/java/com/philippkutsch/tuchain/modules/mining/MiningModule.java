@@ -1,27 +1,23 @@
-package com.philippkutsch.tuchain.modules;
+package com.philippkutsch.tuchain.modules.mining;
 
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.philippkutsch.tuchain.Node;
-import com.philippkutsch.tuchain.Miner;
 import com.philippkutsch.tuchain.chain.HashedBlock;
-import com.philippkutsch.tuchain.chain.SignedTransaction;
 import com.philippkutsch.tuchain.chain.Transaction;
 import com.philippkutsch.tuchain.chain.utils.ChainUtils;
+import com.philippkutsch.tuchain.modules.ModuleLoadException;
+import com.philippkutsch.tuchain.modules.NodeModule;
 import com.philippkutsch.tuchain.network.protocol.NewBlockMessage;
+import com.philippkutsch.tuchain.utils.TransactionVerificationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.nio.charset.StandardCharsets;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SignatureException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Queue;
+import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
@@ -29,7 +25,7 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
     private static final Logger logger
             = LoggerFactory.getLogger(MiningModule.class);
 
-    private final Queue<SignedTransaction> transactionQueue;
+    private final Queue<Transaction> transactionQueue;
     private ListenableFuture<HashedBlock> miningFuture;
 
     public MiningModule(@Nonnull Node node)
@@ -80,6 +76,42 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         stopMining();
     }
 
+    public boolean submitTransaction(@Nonnull Transaction transaction) {
+        //Validate transaction
+        TransactionVerificationUtils.VerificationResult result =
+                TransactionVerificationUtils.verifyTransaction(
+                        node.getBlockchain(),
+                        transaction,
+                        true);
+        if(!result.isSuccess()) {
+            logger.error("Transaction invalid " + result.getError());
+            return false;
+        }
+
+        //Check if transaction is already in queue
+        boolean alreadyInQueue = transactionQueue.stream()
+                .anyMatch((t) -> Arrays.equals(t.getTransactionId(), transaction.getTransactionId()));
+        if(alreadyInQueue) {
+            logger.error("Transaction already queued");
+            return false;
+        }
+
+        transactionQueue.add(transaction);
+
+        return true;
+    }
+
+    public void removeTransactionsFromQueue(@Nonnull Transaction[] transactions) {
+        transactionQueue.removeIf((t -> {
+            for(Transaction transaction : transactions) {
+                if(Arrays.equals(t.getTransactionId(), transaction.getTransactionId())) {
+                    return true;
+                }
+            }
+            return false;
+        }));
+    }
+
     public void startMining() {
         if(miningFuture != null) {
             logger.warn("Block mining already running");
@@ -87,30 +119,27 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         }
 
         logger.debug("Block mining starting");
+
         //Collect transactions
-        List<SignedTransaction> signedTransactionList = new ArrayList<>(transactionQueue.stream().toList());
+        List<Transaction> transactionList = new ArrayList<>(transactionQueue.stream().toList());
 
-        //Create mining reward transaction
-        Transaction.Target target = new Transaction.Target(100, node.getRsaKeys().getPublicKeyBytes());
-        Transaction transaction = new Transaction(0, System.currentTimeMillis(), "coinbase".getBytes(StandardCharsets.UTF_8),
-                new Transaction.Target[]{target});
-        byte[] transactionBytes = ChainUtils.encodeToBytes(transaction);
-        byte[] signature;
-        try {
-            signature = node.getRsaKeys().signData(transactionBytes);
-        } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
-            e.printStackTrace();
-            return;
-        }
+        //Purge transactions
+        transactionQueue.clear();
 
-        SignedTransaction miningRewardTransaction = SignedTransaction.fromTransaction(transaction, signature);
-        signedTransactionList.add(0, miningRewardTransaction);
+        //Generate coinbase transaction
+        Transaction coinbase = Transaction.buildCoinbaseTransaction(
+                System.currentTimeMillis(),
+                //TODO read from config
+                100,
+                "PK coinbase transaction".getBytes(StandardCharsets.UTF_8),
+                node.getRsaKeys().getPublicKeyBytes());
 
-        //TODO: Fix transaction ids. ids are ordered by timestamp, so id should not be part
-        //  of the signature...
+        //combine and order by timestamp descending
+        transactionList.sort(Comparator.comparing(Transaction::getTimestamp));
+        transactionList.add(0, coinbase);
 
         miningFuture = node.getService().submit(new Miner(node.getBlockchain()
-                .buildNextBlock(signedTransactionList), null));
+                .buildNextBlock(transactionList), null));
         Futures.addCallback(miningFuture, this, node.getService());
     }
 

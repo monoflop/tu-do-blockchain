@@ -4,14 +4,15 @@ import javax.annotation.Nonnull;
 import java.util.Arrays;
 
 public class BlockBody {
-    protected final SignedTransaction[] signedTransactions;
+    protected final Transaction[] transactions;
 
-    public BlockBody(@Nonnull SignedTransaction[] signedTransactions) {
-        this.signedTransactions = signedTransactions;
+    public BlockBody(@Nonnull Transaction[] transactions) {
+        this.transactions = transactions;
     }
 
-    public SignedTransaction[] getSignedTransactions() {
-        return signedTransactions;
+    @Nonnull
+    public Transaction[] getTransactions() {
+        return transactions;
     }
 
     @Override
@@ -19,11 +20,11 @@ public class BlockBody {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         BlockBody blockBody = (BlockBody) o;
-        return Arrays.equals(getSignedTransactions(), blockBody.getSignedTransactions());
+        return Arrays.equals(getTransactions(), blockBody.getTransactions());
     }
 
     @Override
     public int hashCode() {
-        return Arrays.hashCode(getSignedTransactions());
+        return Arrays.hashCode(getTransactions());
     }
 }

@@ -9,6 +9,11 @@ public class Block {
     protected final byte[] prevHash;
     protected final BlockBody data;
 
+    @Nonnull
+    public static Block generateGenesisBlock() {
+        return new Block(1, new byte[]{}, new BlockBody(new Transaction[]{}));
+    }
+
     public Block(long id,
                  @Nonnull byte[] prevHash,
                  @Nonnull BlockBody data) {

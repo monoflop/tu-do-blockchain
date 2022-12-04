@@ -1,4 +1,4 @@
-package com.philippkutsch.tuchain;
+package com.philippkutsch.tuchain.modules.mining;
 
 //Ticks on every generated hash
 //Calculate hash performance

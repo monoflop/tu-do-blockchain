@@ -2,6 +2,7 @@ package com.philippkutsch.tuchain;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -22,15 +23,20 @@ public class RsaKeys {
     private final PrivateKey privateKey;
     private final PublicKey publicKey;
 
-    public RsaKeys(@Nonnull byte[] publicKeyBytes,
+    public RsaKeys(@Nullable byte[] publicKeyBytes,
                    @Nullable byte[] privateKeyBytes)
             throws NoSuchAlgorithmException, InvalidKeySpecException {
 
         this.privateKeyBytes = privateKeyBytes;
         this.publicKeyBytes = publicKeyBytes;
 
-        //Import public key
-        this.publicKey = publicKeyFromBytes(publicKeyBytes);
+        //If present, import public key
+        if(publicKeyBytes != null) {
+            this.publicKey = publicKeyFromBytes(publicKeyBytes);
+        }
+        else {
+            this.publicKey = null;
+        }
 
         //If present, import private key
         if(privateKeyBytes != null) {
@@ -42,8 +48,20 @@ public class RsaKeys {
     }
 
     @Nonnull
-    public static RsaKeys fromFiles(@Nonnull String publicKeyPath,
-                                    @Nullable String privateKeyPath)
+    public static RsaKeys fromFiles(@Nonnull File publicKeyFile,
+                                    @Nullable File privateKeyFile)
+            throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
+        byte[] publicKeyBytes = Files.readAllBytes(publicKeyFile.toPath());
+        byte[] privateKeyBytes = null;
+        if(privateKeyFile != null) {
+            privateKeyBytes = Files.readAllBytes(privateKeyFile.toPath());
+        }
+        return new RsaKeys(publicKeyBytes, privateKeyBytes);
+    }
+
+    @Nonnull
+    public static RsaKeys fromFilesPaths(@Nonnull String publicKeyPath,
+                                         @Nullable String privateKeyPath)
             throws IOException, NoSuchAlgorithmException, InvalidKeySpecException {
         byte[] publicKeyBytes = Files.readAllBytes(Paths.get(publicKeyPath));
         byte[] privateKeyBytes = null;
@@ -67,6 +85,9 @@ public class RsaKeys {
 
     public boolean verifyData(@Nonnull byte[] data, @Nonnull byte[] sig)
             throws NoSuchAlgorithmException, InvalidKeyException, SignatureException {
+        if(!hasPublicKey()) {
+            throw new IllegalStateException("No public key");
+        }
         Signature signature = Signature.getInstance("SHA256withRSA");
         signature.initVerify(publicKey);
         signature.update(data);
@@ -83,9 +104,15 @@ public class RsaKeys {
         return privateKeyBytes;
     }
 
+    public boolean hasPublicKey() {
+        return publicKeyBytes != null;
+    }
+
     public boolean hasPrivateKey() {
         return privateKeyBytes != null;
     }
+
+
 
     @Nonnull
     private static PublicKey publicKeyFromBytes(@Nonnull byte[] bytes)

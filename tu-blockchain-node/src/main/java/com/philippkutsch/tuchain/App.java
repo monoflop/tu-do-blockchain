@@ -10,7 +10,10 @@ import com.google.gson.JsonParseException;
 import com.philippkutsch.tuchain.chain.*;
 import com.philippkutsch.tuchain.chain.utils.ChainUtils;
 import com.philippkutsch.tuchain.config.Config;
+import com.philippkutsch.tuchain.modules.BlockchainSyncModule;
 import com.philippkutsch.tuchain.modules.PingModule;
+import com.philippkutsch.tuchain.modules.mining.HashPerformanceAnalyser;
+import com.philippkutsch.tuchain.modules.mining.Miner;
 import com.philippkutsch.tuchain.network.RemoteNode;
 import net.sourceforge.argparse4j.ArgumentParsers;
 import net.sourceforge.argparse4j.impl.Arguments;
@@ -25,13 +28,17 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.file.Files;
+import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
+import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 
+//TODO GSON serialization allows null fields and has no really reliable serialization / deserialization order...
 public class App {
     private static final Logger logger
             = LoggerFactory.getLogger(App.class);
@@ -103,8 +110,8 @@ public class App {
         RsaKeys rsaKeys;
         try {
             rsaKeys = RsaKeys.fromFiles(
-                    new File(workingDirectory, config.getPublicKeyFilePath()).getPath(),
-                    new File(workingDirectory, config.getPrivateKeyFilePath()).getPath());
+                    new File(workingDirectory, config.getPublicKeyFilePath()),
+                    new File(workingDirectory, config.getPrivateKeyFilePath()));
         }
         catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
             logger.error("Failed to load rsa keys", e);
@@ -139,7 +146,7 @@ public class App {
                         listeningDecorator(Executors.newCachedThreadPool());
 
                 ListenableFuture<HashedBlock> hashedBlockFuture = service.submit(new Miner(
-                        new Block(1, new byte[]{}, new BlockBody(new SignedTransaction[]{})),
+                        Block.generateGenesisBlock(),
                         new HashPerformanceAnalyser()
                 ));
                 HashedBlock hashedBlock = hashedBlockFuture.get();
@@ -175,11 +182,24 @@ public class App {
         //Listen for input
         BufferedReader reader = new BufferedReader(
                 new InputStreamReader(System.in));
-        logger.info("Waiting for input (exit, nodes, ping, save):");
+
+        //TODO: figure out how to use arg parser
+        logger.info("""
+                Waiting for input:
+                exit                   Shutdown node and exit
+                nodes                  List all connected nodes
+                ping                   Ping all connected nodes
+                save                   Save blockchain to disk
+                blockchain             View blockchain
+                minerkey               Show miner public key
+                balance [pubKey]       Get UTXO of pubKey
+                transactions [pubKey]  Get all transactions that public key is involved in
+                tx [txId] [vOut] [amount] [target pubKey] [pubKey] [privKey] Create a transaction
+                """);
+
         try {
             for (String cmd = reader.readLine(); cmd != null; cmd = reader.readLine()) {
                 String[] input = cmd.split(" ");
-
                 if("exit".equals(input[0])) {
                     break;
                 }
@@ -212,6 +232,10 @@ public class App {
                         }
                     }
                 }
+                else if("blockchain".equals(input[0])) {
+                    List<HashedBlock> blockList = testingNode.getBlockchain().getBlockchain();
+                    logger.info("Blockchain: " + blockList.size() + " blocks long");
+                }
                 else if("save".equals(input[0])) {
                     try {
                         Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(testingNode.blockchain));
@@ -221,10 +245,144 @@ public class App {
                         logger.error("Failed to save blockchain", e);
                     }
                 }
+                else if("minerkey".equals(input[0])) {
+                    logger.info("Public:\n" + ChainUtils.bytesToBase64(rsaKeys.getPublicKeyBytes())
+                            + "\n\nPrivate:\n" + ChainUtils.bytesToBase64(rsaKeys.getPrivateKeyBytes()));
+                }
+                else if("transactions".equals(input[0])) {
+                    if (input.length != 2) {
+                        logger.info("Usage: balance [pubKey]");
+                        continue;
+                    }
+
+                    byte[] pubKey = ChainUtils.bytesFromBase64(input[1]);
+                    try {
+                        new RsaKeys(pubKey, null);
+                    } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                        logger.error("Invalid public key", e);
+                        continue;
+                    }
+
+
+                    //TODO Find all transactions
+                }
+                else if("balance".equals(input[0])) {
+                    if(input.length != 2) {
+                        logger.info("Usage: balance [pubKey]");
+                        continue;
+                    }
+
+                    RsaKeys pubKey;
+                    try {
+                        pubKey = new RsaKeys(ChainUtils.bytesFromBase64(input[1]), null);
+                    }
+                    catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                        logger.error("Invalid public key", e);
+                        continue;
+                    }
+
+                    List<UnspentTransactionOutput> uTXOList =
+                            blockchain.findUTXO(pubKey.getPublicKeyBytes());
+
+                    logger.info("Available balance");
+
+                    int sum = 0;
+                    for(UnspentTransactionOutput uTXO : uTXOList) {
+                        logger.info(uTXO.toString());
+                        sum += uTXO.getAmount();
+                    }
+                    logger.info("Total available amount: " + sum);
+                }
+                else if("tx".equals(input[0])) {
+                    if(input.length != 7) {
+                        logger.info("Usage: tx [txId] [vOut] [amount] [target pubKey] [pubKey] [privKey]");
+                        continue;
+                    }
+
+                    //Arguments
+                    byte[] txId = ChainUtils.bytesFromBase64(input[1]);
+                    int vOut = Integer.parseInt(input[2]);
+                    int amount = Integer.parseInt(input[3]);
+                    byte[] targetPubKey = ChainUtils.bytesFromBase64(input[4]);
+                    byte[] ownPubKey = ChainUtils.bytesFromBase64(input[5]);
+                    byte[] ownPrivateKey = ChainUtils.bytesFromBase64(input[6]);
+                    RsaKeys keyPair;
+                    try {
+                        new RsaKeys(targetPubKey, null);
+                        keyPair = new RsaKeys(ownPubKey, ownPrivateKey);
+                    }
+                    catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                        logger.error("Invalid keys", e);
+                        continue;
+                    }
+
+                    //Search input transaction
+                    Optional<Transaction> targetTransactionOptional = testingNode.getBlockchain().findTransaction(txId);
+                    if(targetTransactionOptional.isEmpty()) {
+                        logger.error("Transaction " + input[1] + " not found");
+                        continue;
+                    }
+                    Transaction targetTransaction = targetTransactionOptional.get();
+
+                    //Get output
+                    if(vOut > targetTransaction.getOutputs().length - 1) {
+                        logger.error("Transaction target vOut " + input[2] +" not found");
+                        continue;
+                    }
+
+                    int availableAmount = targetTransaction.getOutputs()[vOut].getAmount();
+                    if(availableAmount < amount) {
+                        logger.error("Transaction has not enough funds " + input[3]);
+                        continue;
+                    }
+
+                    //Create transaction
+                    Transaction.Input transactionInput = new Transaction.Input(txId, vOut);
+                    Transaction.Input[] inputs = {transactionInput};
+                    Transaction.Output transactionOutput = new Transaction.Output(amount, targetPubKey);
+                    Transaction.Output[] outputs = {transactionOutput};
+                    if(availableAmount > amount) {
+                        //Add transaction back to our self
+                        outputs = new Transaction.Output[]{transactionOutput, new Transaction.Output(availableAmount-amount, keyPair.getPublicKeyBytes())};
+                    }
+
+                    SignAbleTransaction signAbleTransaction = new SignAbleTransaction(System.currentTimeMillis(), inputs, outputs);
+                    byte[] rawTransactionBytes = ChainUtils.encodeToBytes(signAbleTransaction);
+
+                    byte[] signature;
+                    try {
+                        signature = keyPair.signData(rawTransactionBytes);
+                    }
+                    catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+                        logger.error("Failed to sign transaction", e);
+                        continue;
+                    }
+
+                    Transaction.SignedInput signedInput = transactionInput.toSignedInput(signature);
+                    Transaction.SignedInput[] signedInputs = { signedInput };
+                    Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
+
+                    //Submit
+                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    if(syncModule == null) {
+                        logger.error("Module not found");
+                        continue;
+                    }
+
+                    boolean accepted = syncModule.addNewTransaction(transaction);
+                    if(accepted) {
+                        logger.info("Transaction " + ChainUtils.bytesToBase64(transaction.getTransactionId()) + " accepted");
+                        logger.info(ChainUtils.encodeToString(transaction));
+                    }
+                    else {
+                        logger.error("Transaction rejected");
+                    }
+                }
                 else {
                     logger.warn("Unknown command '" + input[0] + "'");
                 }
             }
+
             reader.close();
         }
         catch (IOException e) {

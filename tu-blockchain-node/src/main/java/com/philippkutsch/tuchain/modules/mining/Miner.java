@@ -1,4 +1,4 @@
-package com.philippkutsch.tuchain;
+package com.philippkutsch.tuchain.modules.mining;
 
 import com.google.common.hash.HashCode;
 import com.philippkutsch.tuchain.chain.Block;

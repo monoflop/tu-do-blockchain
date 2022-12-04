@@ -36,4 +36,9 @@ public final class ChainUtils {
     public static byte[] bytesFromBase64(@Nonnull String data) {
         return Base64.getDecoder().decode(data);
     }
+
+    @Nonnull
+    public static String bytesToBase64(@Nonnull byte[] bytes) {
+        return Base64.getEncoder().encodeToString(bytes);
+    }
 }

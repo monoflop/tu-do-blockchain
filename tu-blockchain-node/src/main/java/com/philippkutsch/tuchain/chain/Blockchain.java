@@ -1,25 +1,15 @@
 package com.philippkutsch.tuchain.chain;
 
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import javax.annotation.Nonnull;
-import java.security.InvalidKeyException;
-import java.security.NoSuchAlgorithmException;
-import java.security.SignatureException;
-import java.security.spec.InvalidKeySpecException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.concurrent.locks.Lock;
+import java.util.Optional;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class Blockchain {
-    private static transient final Logger logger
-            = LoggerFactory.getLogger(Blockchain.class);
-
     private transient final ReadWriteLock lock;
 
     private final List<HashedBlock> blockList;
@@ -59,6 +49,12 @@ public class Blockchain {
     }
 
     //Dangerous methods
+    public void beginReadAccess() {
+        lock.readLock().lock();
+    }
+    public void endReadAccess() {
+        lock.readLock().unlock();
+    }
     public void beginWriteAccess() {
         lock.writeLock().lock();
     }
@@ -69,78 +65,117 @@ public class Blockchain {
     //Return a copy of the blockchain
     @Nonnull
     public List<HashedBlock> getBlockchain() {
-        return new ArrayList<>(blockList);
+        try {
+            lock.readLock().lock();
+            return new ArrayList<>(blockList);
+        } finally {
+            lock.readLock().unlock();
+        }
     }
 
-
+    //Search for a transaction
+    @Nonnull
+    public Optional<Transaction> findTransaction(@Nonnull byte[] transactionId) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            for(Transaction transaction : block.getData().getTransactions()) {
+                if(Arrays.equals(transaction.getTransactionId(), transactionId)) {
+                    return Optional.of(transaction);
+                }
+            }
+        }
+        return Optional.empty();
+    }
 
     @Nonnull
-    public Block buildNextBlock(@Nonnull List<SignedTransaction> transactionList) {
-        HashedBlock currentBlock = getLastBlock();
-        BlockBody blockBody = new BlockBody(transactionList.toArray(new SignedTransaction[0]));
-        return new Block(currentBlock.id + 1, currentBlock.hash, blockBody);
+    private List<Transaction.Input> findTransactionInputs(
+            @Nonnull List<HashedBlock> blockListCopy,
+            @Nonnull byte[] txId) {
+        List<Transaction.Input> inputList = new ArrayList<>();
+        for(HashedBlock block : blockListCopy) {
+            for(Transaction transaction : block.getData().getTransactions()) {
+                for(Transaction.Input input : transaction.getInputs()) {
+                    if(Arrays.equals(input.getTxId(), txId)) {
+                        inputList.add(input);
+                    }
+                }
+            }
+        }
+        return inputList;
     }
 
-    //TODO Think there is an issue with block validation
-    //  Not all blocks are validated
-    public boolean validateChain() {
-        List<HashedBlock> copyList = new ArrayList<>(blockList);
-        if(copyList.isEmpty()) {
-            return true;
+    @Nonnull
+    public Optional<Transaction.Input> findTransactionInput(
+            @Nonnull byte[] txId,
+            int vOut) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            for(Transaction transaction : block.getData().getTransactions()) {
+                for(Transaction.Input input : transaction.getInputs()) {
+                    if(Arrays.equals(input.getTxId(), txId) && input.getvOut() == vOut) {
+                        return Optional.of(input);
+                    }
+                }
+            }
         }
+        return Optional.empty();
+    }
 
-        if(copyList.size() == 1) {
-            HashedBlock genesisBlock = copyList.get(0);
-            return genesisBlock.isHeaderValid();
-        }
-        else {
-            HashedBlock prevBlock = copyList.get(0);
-            for(int i = 1; i < copyList.size(); i++) {
-                HashedBlock currentBlock = copyList.get(i);
+    @Nonnull
+    public List<Transaction> findUTXOTransaction(@Nonnull byte[] pubKey) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        List<Transaction> uTXOTransactionList = new ArrayList<>();
+        //Iterate over all transaction outputs and check if pubKey is matching
+        for(HashedBlock hashedBlock : blockListCopy) {
+            for(Transaction transaction : hashedBlock.getData().getTransactions()) {
+                Transaction.Output[] outputs = transaction.getOutputs();
+                for(int i = 0; i < outputs.length; i++) {
+                    if(Arrays.equals(pubKey, outputs[i].getPubKey())) {
+                        //Find inputs that are referencing this output
+                        byte[] txId = transaction.getTransactionId();
+                        List<Transaction.Input> inputList =
+                                findTransactionInputs(blockListCopy, txId);
 
-                //Check header (signature is correct)
-                if(!prevBlock.isHeaderValid()) {
-                    logger.warn("Block validation: header invalid #" + prevBlock.getId());
-                    return false;
-                }
+                        //Check if vOut is referenced
+                        boolean spend = false;
+                        for(Transaction.Input input : inputList) {
+                            if(input.getvOut() == i) {
+                                //If we have a reference, the transaction is spent
+                                spend = true;
+                                break;
+                            }
+                        }
 
-                //Check if blocks are chained correctly
-                if(prevBlock.getId() + 1 != currentBlock.getId()) {
-                    logger.warn("Block validation: id invalid #" + prevBlock.getId()
-                            + " #" + currentBlock.getId());
-                    return false;
-                }
-
-                //Check if block hashes matches
-                if(!Arrays.equals(prevBlock.hash, currentBlock.prevHash)) {
-                    logger.warn("Block validation: hash mismatch #" + prevBlock.getId()
-                            + " #" + currentBlock.getId());
-                    return false;
-                }
-
-                try {
-                    //TODO check transactions
-                    for(SignedTransaction signedTransaction
-                            : prevBlock.getData().getSignedTransactions()) {
-                        boolean valid = signedTransaction.isValid();
-                        if(!valid) {
-                            logger.warn("Block validation: block #" + prevBlock.getId()
-                                    + " transaction #" + signedTransaction.getId() + " invalid signature");
-                            return false;
+                        if(!spend) {
+                            uTXOTransactionList.add(transaction);
                         }
                     }
                 }
-                catch (NoSuchAlgorithmException | InvalidKeySpecException |
-                        InvalidKeyException | SignatureException e) {
-                    logger.warn("Block validation: block # " + prevBlock.getId()
-                            + " invalid signature exception", e);
-                    return false;
-                }
-
-                prevBlock = currentBlock;
             }
         }
+        return uTXOTransactionList;
+    }
 
-        return true;
+    @Nonnull
+    public List<UnspentTransactionOutput> findUTXO(@Nonnull byte[] pubKey) {
+        List<UnspentTransactionOutput> uTXOList = new ArrayList<>();
+        List<Transaction> uTXOTransactions = findUTXOTransaction(pubKey);
+        for(Transaction transaction : uTXOTransactions) {
+            Transaction.Output[] outputs = transaction.getOutputs();
+            for(int i = 0; i < outputs.length; i++) {
+                if(Arrays.equals(outputs[i].getPubKey(), pubKey)) {
+                    uTXOList.add(new UnspentTransactionOutput(
+                            transaction.getTransactionId(), i, outputs[i].getAmount()));
+                }
+            }
+        }
+        return uTXOList;
+    }
+
+    @Nonnull
+    public Block buildNextBlock(@Nonnull List<Transaction> transactionList) {
+        HashedBlock currentBlock = getLastBlock();
+        BlockBody blockBody = new BlockBody(transactionList.toArray(new Transaction[0]));
+        return new Block(currentBlock.id + 1, currentBlock.hash, blockBody);
     }
 }

@@ -3,17 +3,21 @@ package com.philippkutsch.tuchain.modules;
 import com.philippkutsch.tuchain.Node;
 import com.philippkutsch.tuchain.chain.Blockchain;
 import com.philippkutsch.tuchain.chain.HashedBlock;
+import com.philippkutsch.tuchain.chain.Transaction;
+import com.philippkutsch.tuchain.modules.mining.MiningModule;
 import com.philippkutsch.tuchain.network.RemoteNode;
 import com.philippkutsch.tuchain.network.protocol.BlockchainSyncMessage;
 import com.philippkutsch.tuchain.network.protocol.Message;
 import com.philippkutsch.tuchain.network.protocol.NewBlockMessage;
+import com.philippkutsch.tuchain.network.protocol.NewTransactionMessage;
+import com.philippkutsch.tuchain.utils.BlockchainVerificationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import java.util.List;
 
-//TODO chain is not synched correctly
+//TODO chain is not synced correctly
 public class BlockchainSyncModule extends NodeModule {
     private static final Logger logger
             = LoggerFactory.getLogger(BlockchainSyncModule.class);
@@ -56,6 +60,19 @@ public class BlockchainSyncModule extends NodeModule {
             }
             return true;
         }
+        else if(NewTransactionMessage.TYPE.equals(message.getType())) {
+            NewTransactionMessage newTransactionMessage = message.to(NewTransactionMessage.class);
+            boolean success = tryAddingTransaction(newTransactionMessage.getTransaction());
+            if(success) {
+                logger.debug("New transaction from " + remoteNode.getKey()
+                        + ". Added to mining queue");
+            }
+            else {
+                logger.debug("New transaction from " + remoteNode.getKey()
+                        + ". Invalid and rejected");
+            }
+            return true;
+        }
         return false;
     }
 
@@ -76,6 +93,15 @@ public class BlockchainSyncModule extends NodeModule {
         }
     }
 
+    public boolean addNewTransaction(@Nonnull Transaction transaction) {
+        boolean success = tryAddingTransaction(transaction);
+        if(success) {
+            node.getNetwork().broadcast(new NewTransactionMessage(transaction).encode());
+        }
+
+        return success;
+    }
+
     private void handleSync(@Nonnull RemoteNode remoteNode,
                             @Nonnull BlockchainSyncMessage blockchainSyncMessage) {
         boolean success = tryBlockchainSync(blockchainSyncMessage.getBlockchain());
@@ -87,7 +113,14 @@ public class BlockchainSyncModule extends NodeModule {
         }
     }
 
-    private boolean tryAddingNewBlock(@Nonnull HashedBlock hashedBlock) {
+    private boolean tryAddingTransaction(
+            @Nonnull Transaction transaction) {
+        MiningModule miningModule = node.requireModule(MiningModule.class);
+        return miningModule.submitTransaction(transaction);
+    }
+
+    private boolean tryAddingNewBlock(
+            @Nonnull HashedBlock hashedBlock) {
         MiningModule miningModule = node.requireModule(MiningModule.class);
 
         //Lock chain
@@ -97,13 +130,19 @@ public class BlockchainSyncModule extends NodeModule {
             List<HashedBlock> futureChain = node.getBlockchain().getBlockchain();
             futureChain.add(hashedBlock);
             Blockchain newTargetChain = new Blockchain(futureChain);
-            if(!newTargetChain.validateChain()) {
-                logger.debug("Chain with added block invalid");
+
+            //TODO read block reward from config?
+            BlockchainVerificationUtils.VerificationResult verificationResult
+                    = BlockchainVerificationUtils.validateBlockchain(newTargetChain, 100);
+            if(!verificationResult.isSuccess()) {
+                logger.debug("Blockchain with new block #" + hashedBlock.getId() + " verification error\n"
+                        + verificationResult.errorString());
                 return false;
             }
 
             //Add to chain
             miningModule.stopMining();
+            miningModule.removeTransactionsFromQueue(hashedBlock.getData().getTransactions());
             node.getBlockchain().addBlock(hashedBlock);
             miningModule.startMining();
             return true;
@@ -125,8 +164,12 @@ public class BlockchainSyncModule extends NodeModule {
             List<HashedBlock> remoteChain = remoteBlockChain.getBlockchain();
 
             //Check if the blockchain is valid
-            if(!remoteBlockChain.validateChain()) {
-                logger.debug("Remote chain invalid");
+            //TODO read block reward from config?
+            BlockchainVerificationUtils.VerificationResult verificationResult
+                    = BlockchainVerificationUtils.validateBlockchain(remoteBlockChain, 100);
+            if(!verificationResult.isSuccess()) {
+                logger.debug("Remote chain verification error\n"
+                        + verificationResult.errorString());
                 return false;
             }
 
@@ -147,7 +190,10 @@ public class BlockchainSyncModule extends NodeModule {
                 List<HashedBlock> newBlocks = remoteChain.subList(
                         (remoteChain.size() - additionalBlocks),
                         remoteChain.size());
+                logger.debug("Forwarding chain " + newBlocks.size() + " blocks");
                 for(HashedBlock newBlock : newBlocks) {
+                    logger.debug("Adding block #" + newBlock.getId());
+                    miningModule.removeTransactionsFromQueue(newBlock.getData().getTransactions());
                     node.getBlockchain().addBlock(newBlock);
                 }
                 miningModule.startMining();
