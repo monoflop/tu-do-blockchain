@@ -1,8 +1,7 @@
 {
   "name":"node2",
   "port":8001,
-  "privateKeyFilePath":"private.der",
-  "publicKeyFilePath":"public.der",
+  "walletFilePath":"node2.wallet",
   "blockchainFilePath":"blockchain.json",
   "knownPeers": [
     {

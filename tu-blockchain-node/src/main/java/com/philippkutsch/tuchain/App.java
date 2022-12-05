@@ -20,6 +20,7 @@ import net.sourceforge.argparse4j.impl.Arguments;
 import net.sourceforge.argparse4j.inf.ArgumentParser;
 import net.sourceforge.argparse4j.inf.ArgumentParserException;
 import net.sourceforge.argparse4j.inf.Namespace;
+import net.sourceforge.argparse4j.inf.Subparsers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,12 +56,31 @@ public class App {
         parser.addArgument("-d", "--directory")
                 .setDefault(".")
                 .help("Specify working directory");
-        parser.addArgument("-g", "--genesis")
-                .action(Arguments.storeTrue())
-                .help("Generate genesis block only");
         parser.addArgument("-v", "--verbose")
                 .action(Arguments.storeTrue())
                 .help("Log everything");
+
+        Subparsers subparsers = parser.addSubparsers();
+        subparsers.addParser("node")
+                .help("Start full network node")
+                .addArgument("node")
+                .action(Arguments.storeTrue());
+
+        subparsers.addParser("gen-wallet")
+                .help("Generate a new wallet file")
+                .addArgument("-o", "--out")
+                .dest("walletOut")
+                .type(Arguments.fileType())
+                .setDefault("myWallet.wallet")
+                .help("Target wallet file");
+
+        subparsers.addParser("gen-genesis")
+                .help("Generate a new genesis block and save it to a new chain")
+                .addArgument("-o", "--out")
+                .dest("genesisOut")
+                .type(Arguments.fileType())
+                .setDefault("blockchain.json")
+                .help("Target blockchain file");
 
         Namespace namespace = null;
         try {
@@ -81,13 +101,67 @@ public class App {
             }
         }
 
+        //Generate wallet
+        if(namespace.getString("walletOut") != null) {
+            File targetWalletFile = new File(namespace.getString("directory"), namespace.getString("walletOut"));
+            logger.info("Generating new wallet: " + targetWalletFile.getPath());
+
+            try {
+                //Generate wallet
+                Wallet newWallet = Wallet.generate();
+
+                //Save wallet
+                newWallet.save(targetWalletFile);
+
+                logger.info("Wallet generated successfully!");
+            }
+            catch (IOException | InterruptedException |
+                    NoSuchAlgorithmException | InvalidKeySpecException e) {
+                logger.error("Failed to generate wallet", e);
+                return;
+            }
+            return;
+        }
+
+        //Generate genesis block and save to blockchain
+        if (namespace.getString("genesisOut") != null) {
+            File targetBlockchain = new File(namespace.getString("directory"), namespace.getString("genesisOut"));
+            logger.info("Generating genesis block: " + targetBlockchain.getPath());
+
+            logger.info("");
+            try {
+                //Generate
+                ListeningExecutorService service = MoreExecutors.
+                        listeningDecorator(Executors.newCachedThreadPool());
+
+                ListenableFuture<HashedBlock> hashedBlockFuture = service.submit(new Miner(
+                        Block.generateGenesisBlock(),
+                        new HashPerformanceAnalyser()
+                ));
+                HashedBlock hashedBlock = hashedBlockFuture.get();
+                logger.info("Generated genesis block " + ChainUtils.encodeToString(hashedBlock));
+
+                //Export to blockchain
+                List<HashedBlock> blockList = new ArrayList<>();
+                blockList.add(hashedBlock);
+                Blockchain exportChain = new Blockchain(blockList);
+                Files.writeString(targetBlockchain.toPath(), ChainUtils.encodeToString(exportChain));
+
+                //Shutdown
+                service.shutdown();
+            }
+            catch (IOException | InterruptedException | ExecutionException e) {
+                logger.error("Failed to generate / save genesis block", e);
+            }
+            return;
+        }
+
         //Try to load config files
         String workingDirectoryPath = namespace.getString("directory");
         File workingDirectory = new File(workingDirectoryPath);
         if(!workingDirectory.exists()) {
             throw new IllegalArgumentException("Working directory not found");
         }
-        //System.setProperty("user.dir", directory.getAbsolutePath());
 
         File configFile = new File(workingDirectory, "config.json");
         Config config;
@@ -106,12 +180,11 @@ public class App {
             throw new IllegalStateException("No configuration");
         }
 
-        //Load rsa keys
+        //Load wallet and get rsa keys
         RsaKeys rsaKeys;
         try {
-            rsaKeys = RsaKeys.fromFiles(
-                    new File(workingDirectory, config.getPublicKeyFilePath()),
-                    new File(workingDirectory, config.getPrivateKeyFilePath()));
+            Wallet wallet = Wallet.load(new File(workingDirectory, config.getWalletFilePath()));
+            rsaKeys = new RsaKeys(wallet.getPublicKey(), wallet.getPrivateKey());
         }
         catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
             logger.error("Failed to load rsa keys", e);
@@ -137,36 +210,6 @@ public class App {
             }
         }
 
-        //Generate genesis block and save to blockchain
-        if (namespace.getBoolean("genesis")) {
-            logger.info("Generating genesis block");
-            try {
-                //Generate
-                ListeningExecutorService service = MoreExecutors.
-                        listeningDecorator(Executors.newCachedThreadPool());
-
-                ListenableFuture<HashedBlock> hashedBlockFuture = service.submit(new Miner(
-                        Block.generateGenesisBlock(),
-                        new HashPerformanceAnalyser()
-                ));
-                HashedBlock hashedBlock = hashedBlockFuture.get();
-                logger.info("Generated genesis block " + ChainUtils.encodeToString(hashedBlock));
-
-                //Export to blockchain
-                List<HashedBlock> blockList = new ArrayList<>();
-                blockList.add(hashedBlock);
-                Blockchain exportChain = new Blockchain(blockList);
-                Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(exportChain));
-
-                //Shutdown
-                service.shutdown();
-            }
-            catch (IOException | InterruptedException | ExecutionException e) {
-                logger.error("Failed to generate / save genesis block", e);
-            }
-            return;
-        }
-
         //Build and start node
         logger.info("Starting network node " + config.getName() +" on port " + config.getPort());
         TestingNode testingNode;
@@ -188,13 +231,15 @@ public class App {
                 Waiting for input:
                 exit                   Shutdown node and exit
                 nodes                  List all connected nodes
+                connect [ip] [port]    Try to connect to target node
                 ping                   Ping all connected nodes
                 save                   Save blockchain to disk
                 blockchain             View blockchain
                 minerkey               Show miner public key
-                balance [pubKey]       Get UTXO of pubKey
+                balance-key [pubKey]   Get UTXO of pubKey
+                balance [wallet]       Get UTXO of wallet
                 transactions [pubKey]  Get all transactions that public key is involved in
-                tx [txId] [vOut] [amount] [target pubKey] [pubKey] [privKey] Create a transaction
+                tx [txId] [vOut] [amount] [target pubKey] [wallet] Create a transaction
                 """);
 
         try {
@@ -211,6 +256,9 @@ public class App {
                         logger.info("Node '" + connectedNode.getConnectedNode().getName() + "' " + connectedNode.getConnectedNode().getHost()
                                 + ":" + connectedNode.getConnectedNode().getPort());
                     }
+                }
+                else if("connect".equals(input[0])) {
+                    //TODO add connect
                 }
                 else if("ping".equals(input[0])) {
                     PingModule pingModule = testingNode.requireModule(PingModule.class);
@@ -266,7 +314,7 @@ public class App {
 
                     //TODO Find all transactions
                 }
-                else if("balance".equals(input[0])) {
+                else if("balance-key".equals(input[0])) {
                     if(input.length != 2) {
                         logger.info("Usage: balance [pubKey]");
                         continue;
@@ -293,9 +341,37 @@ public class App {
                     }
                     logger.info("Total available amount: " + sum);
                 }
+                else if("balance".equals(input[0])) {
+                    if(input.length != 2) {
+                        logger.info("Usage: balance [pubKey]");
+                        continue;
+                    }
+
+                    RsaKeys pubKey;
+                    try {
+                        Wallet wallet = Wallet.load(new File(workingDirectory, input[1]));
+                        pubKey = new RsaKeys(wallet.getPublicKey(), null);
+                    }
+                    catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
+                        logger.error("Invalid public key / wallet", e);
+                        continue;
+                    }
+
+                    List<UnspentTransactionOutput> uTXOList =
+                            blockchain.findUTXO(pubKey.getPublicKeyBytes());
+
+                    logger.info("Available balance");
+
+                    int sum = 0;
+                    for(UnspentTransactionOutput uTXO : uTXOList) {
+                        logger.info(uTXO.toString());
+                        sum += uTXO.getAmount();
+                    }
+                    logger.info("Total available amount: " + sum);
+                }
                 else if("tx".equals(input[0])) {
-                    if(input.length != 7) {
-                        logger.info("Usage: tx [txId] [vOut] [amount] [target pubKey] [pubKey] [privKey]");
+                    if(input.length != 6) {
+                        logger.info("Usage: tx [txId] [vOut] [amount] [target pubKey] [wallet]");
                         continue;
                     }
 
@@ -304,14 +380,14 @@ public class App {
                     int vOut = Integer.parseInt(input[2]);
                     int amount = Integer.parseInt(input[3]);
                     byte[] targetPubKey = ChainUtils.bytesFromBase64(input[4]);
-                    byte[] ownPubKey = ChainUtils.bytesFromBase64(input[5]);
-                    byte[] ownPrivateKey = ChainUtils.bytesFromBase64(input[6]);
+
                     RsaKeys keyPair;
                     try {
                         new RsaKeys(targetPubKey, null);
-                        keyPair = new RsaKeys(ownPubKey, ownPrivateKey);
+                        Wallet wallet = Wallet.load(new File(workingDirectory, input[5]));
+                        keyPair = new RsaKeys(wallet.getPublicKey(), wallet.getPrivateKey());
                     }
-                    catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                    catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
                         logger.error("Invalid keys", e);
                         continue;
                     }

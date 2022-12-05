@@ -1,8 +1,7 @@
 {
   "name":"node4",
   "port":8003,
-  "privateKeyFilePath":"private.der",
-  "publicKeyFilePath":"public.der",
+  "walletFilePath":"node4.wallet",
   "blockchainFilePath":"blockchain.json",
   "knownPeers": [
     {
