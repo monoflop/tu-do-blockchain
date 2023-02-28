@@ -135,6 +135,7 @@ public class App {
                         listeningDecorator(Executors.newCachedThreadPool());
 
                 ListenableFuture<HashedBlock> hashedBlockFuture = service.submit(new Miner(
+                        24,0,
                         Block.generateGenesisBlock(),
                         new HashPerformanceAnalyser()
                 ));

@@ -138,7 +138,7 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         transactionList.sort(Comparator.comparing(Transaction::getTimestamp));
         transactionList.add(0, coinbase);
 
-        miningFuture = node.getService().submit(new Miner(node.getBlockchain()
+        miningFuture = node.getService().submit(new Miner(24,0, node.getBlockchain()
                 .buildNextBlock(transactionList), null));
         Futures.addCallback(miningFuture, this, node.getService());
     }
