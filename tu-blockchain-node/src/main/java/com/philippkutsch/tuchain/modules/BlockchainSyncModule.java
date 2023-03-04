@@ -2,14 +2,12 @@ package com.philippkutsch.tuchain.modules;
 
 import com.philippkutsch.tuchain.Node;
 import com.philippkutsch.tuchain.chain.Blockchain;
+import com.philippkutsch.tuchain.chain.Contract;
 import com.philippkutsch.tuchain.chain.HashedBlock;
 import com.philippkutsch.tuchain.chain.Transaction;
 import com.philippkutsch.tuchain.modules.mining.MiningModule;
 import com.philippkutsch.tuchain.network.RemoteNode;
-import com.philippkutsch.tuchain.network.protocol.BlockchainSyncMessage;
-import com.philippkutsch.tuchain.network.protocol.Message;
-import com.philippkutsch.tuchain.network.protocol.NewBlockMessage;
-import com.philippkutsch.tuchain.network.protocol.NewTransactionMessage;
+import com.philippkutsch.tuchain.network.protocol.*;
 import com.philippkutsch.tuchain.utils.BlockchainVerificationUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +71,19 @@ public class BlockchainSyncModule extends NodeModule {
             }
             return true;
         }
+        else if(NewContractMessage.TYPE.equals(message.getType())) {
+            NewContractMessage newContractMessage = message.to(NewContractMessage.class);
+            boolean success = tryAddingContract(newContractMessage.getContract());
+            if(success) {
+                logger.debug("New contract from " + remoteNode.getKey()
+                        + ". Added to mining queue");
+            }
+            else {
+                logger.debug("New contract from " + remoteNode.getKey()
+                        + ". Invalid and rejected");
+            }
+            return true;
+        }
         return false;
     }
 
@@ -102,6 +113,15 @@ public class BlockchainSyncModule extends NodeModule {
         return success;
     }
 
+    public boolean addNewContract(@Nonnull Contract contract) {
+        boolean success = tryAddingContract(contract);
+        if(success) {
+            node.getNetwork().broadcast(new NewContractMessage(contract).encode());
+        }
+
+        return success;
+    }
+
     private void handleSync(@Nonnull RemoteNode remoteNode,
                             @Nonnull BlockchainSyncMessage blockchainSyncMessage) {
         boolean success = tryBlockchainSync(blockchainSyncMessage.getBlockchain());
@@ -111,6 +131,12 @@ public class BlockchainSyncModule extends NodeModule {
         else {
             logger.debug("Node " + remoteNode.getKey() + " send invalid chain.");
         }
+    }
+
+    private boolean tryAddingContract(
+            @Nonnull Contract contract) {
+        MiningModule miningModule = node.requireModule(MiningModule.class);
+        return miningModule.submitContract(contract);
     }
 
     private boolean tryAddingTransaction(
@@ -143,6 +169,7 @@ public class BlockchainSyncModule extends NodeModule {
             //Add to chain
             miningModule.stopMining();
             miningModule.removeTransactionsFromQueue(hashedBlock.getData().getTransactions());
+            miningModule.removeContractsFromQueue(hashedBlock.getData().getContracts());
             node.getBlockchain().addBlock(hashedBlock);
             miningModule.startMining();
             return true;

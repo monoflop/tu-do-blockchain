@@ -4,6 +4,7 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.philippkutsch.tuchain.Node;
+import com.philippkutsch.tuchain.chain.Contract;
 import com.philippkutsch.tuchain.chain.HashedBlock;
 import com.philippkutsch.tuchain.chain.Transaction;
 import com.philippkutsch.tuchain.chain.utils.ChainUtils;
@@ -26,12 +27,14 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
             = LoggerFactory.getLogger(MiningModule.class);
 
     private final Queue<Transaction> transactionQueue;
+    private final Queue<Contract> contractQueue;
     private ListenableFuture<HashedBlock> miningFuture;
 
     public MiningModule(@Nonnull Node node)
             throws ModuleLoadException {
         super(node);
         this.transactionQueue = new ConcurrentLinkedQueue<>();
+        this.contractQueue = new ConcurrentLinkedQueue<>();
 
         startMining();
     }
@@ -78,6 +81,7 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
 
     public boolean submitTransaction(@Nonnull Transaction transaction) {
         //Validate transaction
+        //TODO: Consider current queue for verification
         TransactionVerificationUtils.VerificationResult result =
                 TransactionVerificationUtils.verifyTransaction(
                         node.getBlockchain(),
@@ -101,10 +105,35 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         return true;
     }
 
+    public boolean submitContract(@Nonnull Contract contract) {
+        //TODO: Validate
+        //Check if transaction is already in queue
+        boolean alreadyInQueue = contractQueue.stream()
+                .anyMatch((c) -> Arrays.equals(c.getContractId(), contract.getContractId()));
+        if(alreadyInQueue) {
+            logger.error("Contract already queued");
+            return false;
+        }
+
+        contractQueue.add(contract);
+        return true;
+    }
+
     public void removeTransactionsFromQueue(@Nonnull Transaction[] transactions) {
         transactionQueue.removeIf((t -> {
             for(Transaction transaction : transactions) {
                 if(Arrays.equals(t.getTransactionId(), transaction.getTransactionId())) {
+                    return true;
+                }
+            }
+            return false;
+        }));
+    }
+
+    public void removeContractsFromQueue(@Nonnull Contract[] contracts) {
+        contractQueue.removeIf((c -> {
+            for(Contract contract : contracts) {
+                if(Arrays.equals(c.getContractId(), contract.getContractId())) {
                     return true;
                 }
             }
@@ -120,11 +149,13 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
 
         logger.debug("Block mining starting");
 
-        //Collect transactions
+        //Collect transactions and contracts
         List<Transaction> transactionList = new ArrayList<>(transactionQueue.stream().toList());
+        List<Contract> contractList = new ArrayList<>(contractQueue.stream().toList());
 
-        //Purge transactions
+        //Purge transactions and contract
         transactionQueue.clear();
+        contractQueue.clear();
 
         //Generate coinbase transaction
         Transaction coinbase = Transaction.buildCoinbaseTransaction(
@@ -138,8 +169,10 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         transactionList.sort(Comparator.comparing(Transaction::getTimestamp));
         transactionList.add(0, coinbase);
 
+        contractList.sort(Comparator.comparing(Contract::getTimestamp));
+
         miningFuture = node.getService().submit(new Miner(24,0, node.getBlockchain()
-                .buildNextBlock(transactionList), null));
+                .buildNextBlock(transactionList, contractList), null));
         Futures.addCallback(miningFuture, this, node.getService());
     }
 

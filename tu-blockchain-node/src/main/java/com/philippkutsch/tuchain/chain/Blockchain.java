@@ -73,6 +73,31 @@ public class Blockchain {
         }
     }
 
+    //List contracts
+    @Nonnull
+    public List<Contract> listContracts() {
+        List<Contract> contractList = new ArrayList<>();
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            contractList.addAll(Arrays.asList(block.getData().getContracts()));
+        }
+        return contractList;
+    }
+
+    //Search for a contract
+    @Nonnull
+    public Optional<Contract> findContract(@Nonnull byte[] contractId) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            for(Contract contract : block.getData().getContracts()) {
+                if(Arrays.equals(contract.getContractId(), contractId)) {
+                    return Optional.of(contract);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     //Search for a transaction
     @Nonnull
     public Optional<Transaction> findTransaction(@Nonnull byte[] transactionId) {
@@ -173,9 +198,13 @@ public class Blockchain {
     }
 
     @Nonnull
-    public Block buildNextBlock(@Nonnull List<Transaction> transactionList) {
+    public Block buildNextBlock(
+            @Nonnull List<Transaction> transactionList,
+            @Nonnull List<Contract> contractList) {
         HashedBlock currentBlock = getLastBlock();
-        BlockBody blockBody = new BlockBody(transactionList.toArray(new Transaction[0]));
+        BlockBody blockBody = new BlockBody(
+                transactionList.toArray(new Transaction[0]),
+                contractList.toArray(new Contract[0]));
         return new Block(currentBlock.id + 1, currentBlock.hash, blockBody);
     }
 }

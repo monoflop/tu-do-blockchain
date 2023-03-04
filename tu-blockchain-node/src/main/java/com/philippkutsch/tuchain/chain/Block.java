@@ -11,7 +11,7 @@ public class Block {
 
     @Nonnull
     public static Block generateGenesisBlock() {
-        return new Block(1, new byte[]{}, new BlockBody(new Transaction[]{}));
+        return new Block(1, new byte[]{}, new BlockBody(new Transaction[]{}, new Contract[]{}));
     }
 
     public Block(long id,

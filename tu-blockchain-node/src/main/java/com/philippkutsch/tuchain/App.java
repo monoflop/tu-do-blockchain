@@ -33,9 +33,12 @@ import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
 import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.TimeZone;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 
@@ -102,7 +105,7 @@ public class App {
         }
 
         //Generate wallet
-        if(namespace.getString("walletOut") != null) {
+        if (namespace.getString("walletOut") != null) {
             File targetWalletFile = new File(namespace.getString("directory"), namespace.getString("walletOut"));
             logger.info("Generating new wallet: " + targetWalletFile.getPath());
 
@@ -114,8 +117,7 @@ public class App {
                 newWallet.save(targetWalletFile);
 
                 logger.info("Wallet generated successfully!");
-            }
-            catch (IOException | InterruptedException |
+            } catch (IOException | InterruptedException |
                     NoSuchAlgorithmException | InvalidKeySpecException e) {
                 logger.error("Failed to generate wallet", e);
                 return;
@@ -135,7 +137,7 @@ public class App {
                         listeningDecorator(Executors.newCachedThreadPool());
 
                 ListenableFuture<HashedBlock> hashedBlockFuture = service.submit(new Miner(
-                        24,0,
+                        24, 0,
                         Block.generateGenesisBlock(),
                         new HashPerformanceAnalyser()
                 ));
@@ -150,8 +152,7 @@ public class App {
 
                 //Shutdown
                 service.shutdown();
-            }
-            catch (IOException | InterruptedException | ExecutionException e) {
+            } catch (IOException | InterruptedException | ExecutionException e) {
                 logger.error("Failed to generate / save genesis block", e);
             }
             return;
@@ -160,23 +161,21 @@ public class App {
         //Try to load config files
         String workingDirectoryPath = namespace.getString("directory");
         File workingDirectory = new File(workingDirectoryPath);
-        if(!workingDirectory.exists()) {
+        if (!workingDirectory.exists()) {
             throw new IllegalArgumentException("Working directory not found");
         }
 
         File configFile = new File(workingDirectory, "config.json");
         Config config;
-        if(configFile.exists()) {
+        if (configFile.exists()) {
             try {
                 String content = Files.readString(configFile.toPath());
                 config = new Gson().fromJson(content, Config.class);
-            }
-            catch (IOException | JsonParseException e) {
+            } catch (IOException | JsonParseException e) {
                 e.printStackTrace();
                 return;
             }
-        }
-        else {
+        } else {
             //config = Config.standard();
             throw new IllegalStateException("No configuration");
         }
@@ -186,8 +185,7 @@ public class App {
         try {
             Wallet wallet = Wallet.load(new File(workingDirectory, config.getWalletFilePath()));
             rsaKeys = new RsaKeys(wallet.getPublicKey(), wallet.getPrivateKey());
-        }
-        catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
+        } catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
             logger.error("Failed to load rsa keys", e);
             return;
         }
@@ -195,30 +193,27 @@ public class App {
         //Load blockchain
         File blockchainFile = new File(workingDirectory, config.getBlockchainFilePath());
         Blockchain blockchain = null;
-        if(blockchainFile.exists()) {
+        if (blockchainFile.exists()) {
             try {
                 String blockchainJson = Files.readString(blockchainFile.toPath());
                 blockchain = ChainUtils.decodeFromString(blockchainJson, Blockchain.class);
-            }
-            catch (IOException | JsonParseException e) {
+            } catch (IOException | JsonParseException e) {
                 logger.error("Failed to read blockchain from file", e);
                 return;
             }
-        }
-        else {
-            if(!namespace.getBoolean("genesis")) {
+        } else {
+            if (!namespace.getBoolean("genesis")) {
                 throw new IllegalStateException("No blockchain found. A blockchain with an genesis block is required");
             }
         }
 
         //Build and start node
-        logger.info("Starting network node " + config.getName() +" on port " + config.getPort());
+        logger.info("Starting network node " + config.getName() + " on port " + config.getPort());
         TestingNode testingNode;
         try {
             //noinspection ConstantConditions
             testingNode = new TestingNode(config, rsaKeys, blockchain);
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             logger.error("Failed to create node", e);
             return;
         }
@@ -241,64 +236,64 @@ public class App {
                 balance [wallet]       Get UTXO of wallet
                 transactions [pubKey]  Get all transactions that public key is involved in
                 tx [txId] [vOut] [amount] [target pubKey] [wallet] Create a transaction
+                create [deadline] [goal] [title] [description] [wallet] Create crowdfunding project
+                list                    Show all crowdfunding projects
                 """);
 
         try {
             for (String cmd = reader.readLine(); cmd != null; cmd = reader.readLine()) {
                 String[] input = cmd.split(" ");
-                if("exit".equals(input[0])) {
+                if ("exit".equals(input[0])) {
                     break;
                 }
-                else if("nodes".equals(input[0])) {
+                else if ("nodes".equals(input[0])) {
                     logger.info("Connected nodes:");
                     //Get node list
                     List<RemoteNode> connectedNodeList = testingNode.getNetwork().getConnectedNodes();
-                    for(RemoteNode connectedNode : connectedNodeList) {
+                    for (RemoteNode connectedNode : connectedNodeList) {
                         logger.info("Node '" + connectedNode.getConnectedNode().getName() + "' " + connectedNode.getConnectedNode().getHost()
                                 + ":" + connectedNode.getConnectedNode().getPort());
                     }
                 }
-                else if("connect".equals(input[0])) {
-                    //TODO add connect
+                else if ("connect".equals(input[0])) {
+                    //TODO add connec
                 }
-                else if("ping".equals(input[0])) {
+                else if ("ping".equals(input[0])) {
                     PingModule pingModule = testingNode.requireModule(PingModule.class);
                     List<RemoteNode> connectedNodes = testingNode.getNetwork().getConnectedNodes();
 
-                    if(connectedNodes.isEmpty()) {
+                    if (connectedNodes.isEmpty()) {
                         logger.info("No nodes connected");
                         continue;
                     }
 
                     logger.info("Pinging all connected nodes");
-                    for(RemoteNode remoteNode : connectedNodes) {
+                    for (RemoteNode remoteNode : connectedNodes) {
                         boolean response = pingModule.pingNode(remoteNode);
-                        if(response) {
+                        if (response) {
                             logger.info("[.OK.] Node " + remoteNode.getKey());
-                        }
-                        else {
+                        } else {
                             logger.info("[FAIL] Node " + remoteNode.getKey());
                         }
                     }
                 }
-                else if("blockchain".equals(input[0])) {
+                else if ("blockchain".equals(input[0])) {
                     List<HashedBlock> blockList = testingNode.getBlockchain().getBlockchain();
                     logger.info("Blockchain: " + blockList.size() + " blocks long");
                 }
-                else if("save".equals(input[0])) {
+                else if ("save".equals(input[0])) {
                     try {
                         Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(testingNode.blockchain));
                         logger.info("Chain saved!");
-                    }
-                    catch (IOException e) {
+                    } catch (IOException e) {
                         logger.error("Failed to save blockchain", e);
                     }
                 }
-                else if("minerkey".equals(input[0])) {
+                else if ("minerkey".equals(input[0])) {
                     logger.info("Public:\n" + ChainUtils.bytesToBase64(rsaKeys.getPublicKeyBytes())
                             + "\n\nPrivate:\n" + ChainUtils.bytesToBase64(rsaKeys.getPrivateKeyBytes()));
                 }
-                else if("transactions".equals(input[0])) {
+                else if ("transactions".equals(input[0])) {
                     if (input.length != 2) {
                         logger.info("Usage: balance [pubKey]");
                         continue;
@@ -315,8 +310,8 @@ public class App {
 
                     //TODO Find all transactions
                 }
-                else if("balance-key".equals(input[0])) {
-                    if(input.length != 2) {
+                else if ("balance-key".equals(input[0])) {
+                    if (input.length != 2) {
                         logger.info("Usage: balance [pubKey]");
                         continue;
                     }
@@ -324,8 +319,7 @@ public class App {
                     RsaKeys pubKey;
                     try {
                         pubKey = new RsaKeys(ChainUtils.bytesFromBase64(input[1]), null);
-                    }
-                    catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
+                    } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
                         logger.error("Invalid public key", e);
                         continue;
                     }
@@ -336,14 +330,14 @@ public class App {
                     logger.info("Available balance");
 
                     int sum = 0;
-                    for(UnspentTransactionOutput uTXO : uTXOList) {
+                    for (UnspentTransactionOutput uTXO : uTXOList) {
                         logger.info(uTXO.toString());
                         sum += uTXO.getAmount();
                     }
                     logger.info("Total available amount: " + sum);
                 }
-                else if("balance".equals(input[0])) {
-                    if(input.length != 2) {
+                else if ("balance".equals(input[0])) {
+                    if (input.length != 2) {
                         logger.info("Usage: balance [pubKey]");
                         continue;
                     }
@@ -352,8 +346,7 @@ public class App {
                     try {
                         Wallet wallet = Wallet.load(new File(workingDirectory, input[1]));
                         pubKey = new RsaKeys(wallet.getPublicKey(), null);
-                    }
-                    catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
+                    } catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
                         logger.error("Invalid public key / wallet", e);
                         continue;
                     }
@@ -364,14 +357,14 @@ public class App {
                     logger.info("Available balance");
 
                     int sum = 0;
-                    for(UnspentTransactionOutput uTXO : uTXOList) {
+                    for (UnspentTransactionOutput uTXO : uTXOList) {
                         logger.info(uTXO.toString());
                         sum += uTXO.getAmount();
                     }
                     logger.info("Total available amount: " + sum);
                 }
-                else if("tx".equals(input[0])) {
-                    if(input.length != 6) {
+                else if ("tx".equals(input[0])) {
+                    if (input.length != 6) {
                         logger.info("Usage: tx [txId] [vOut] [amount] [target pubKey] [wallet]");
                         continue;
                     }
@@ -387,28 +380,27 @@ public class App {
                         new RsaKeys(targetPubKey, null);
                         Wallet wallet = Wallet.load(new File(workingDirectory, input[5]));
                         keyPair = new RsaKeys(wallet.getPublicKey(), wallet.getPrivateKey());
-                    }
-                    catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
+                    } catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
                         logger.error("Invalid keys", e);
                         continue;
                     }
 
                     //Search input transaction
                     Optional<Transaction> targetTransactionOptional = testingNode.getBlockchain().findTransaction(txId);
-                    if(targetTransactionOptional.isEmpty()) {
+                    if (targetTransactionOptional.isEmpty()) {
                         logger.error("Transaction " + input[1] + " not found");
                         continue;
                     }
                     Transaction targetTransaction = targetTransactionOptional.get();
 
                     //Get output
-                    if(vOut > targetTransaction.getOutputs().length - 1) {
-                        logger.error("Transaction target vOut " + input[2] +" not found");
+                    if (vOut > targetTransaction.getOutputs().length - 1) {
+                        logger.error("Transaction target vOut " + input[2] + " not found");
                         continue;
                     }
 
                     int availableAmount = targetTransaction.getOutputs()[vOut].getAmount();
-                    if(availableAmount < amount) {
+                    if (availableAmount < amount) {
                         logger.error("Transaction has not enough funds " + input[3]);
                         continue;
                     }
@@ -418,9 +410,9 @@ public class App {
                     Transaction.Input[] inputs = {transactionInput};
                     Transaction.Output transactionOutput = new Transaction.Output(amount, targetPubKey);
                     Transaction.Output[] outputs = {transactionOutput};
-                    if(availableAmount > amount) {
+                    if (availableAmount > amount) {
                         //Add transaction back to our self
-                        outputs = new Transaction.Output[]{transactionOutput, new Transaction.Output(availableAmount-amount, keyPair.getPublicKeyBytes())};
+                        outputs = new Transaction.Output[]{transactionOutput, new Transaction.Output(availableAmount - amount, keyPair.getPublicKeyBytes())};
                     }
 
                     SignAbleTransaction signAbleTransaction = new SignAbleTransaction(System.currentTimeMillis(), inputs, outputs);
@@ -429,30 +421,101 @@ public class App {
                     byte[] signature;
                     try {
                         signature = keyPair.signData(rawTransactionBytes);
-                    }
-                    catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+                    } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
                         logger.error("Failed to sign transaction", e);
                         continue;
                     }
 
                     Transaction.SignedInput signedInput = transactionInput.toSignedInput(signature);
-                    Transaction.SignedInput[] signedInputs = { signedInput };
+                    Transaction.SignedInput[] signedInputs = {signedInput};
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
 
                     //Submit
                     BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
-                    if(syncModule == null) {
+                    if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
                     }
 
                     boolean accepted = syncModule.addNewTransaction(transaction);
-                    if(accepted) {
+                    if (accepted) {
                         logger.info("Transaction " + ChainUtils.bytesToBase64(transaction.getTransactionId()) + " accepted");
                         logger.info(ChainUtils.encodeToString(transaction));
-                    }
-                    else {
+                    } else {
                         logger.error("Transaction rejected");
+                    }
+                }
+                else if ("create".equals(input[0])) {
+                    if (input.length != 6) {
+                        logger.info("Usage: create [deadline] [goal] [title] [description] [wallet]");
+                        continue;
+                    }
+
+                    //Arguments
+                    long deadline = Long.parseLong(input[1]);
+                    int goal = Integer.parseInt(input[2]);
+                    String title = input[3];
+                    String description = input[4];
+
+                    RsaKeys keyPair;
+                    try {
+                        Wallet wallet = Wallet.load(new File(workingDirectory, input[5]));
+                        keyPair = new RsaKeys(wallet.getPublicKey(), wallet.getPrivateKey());
+                    } catch (IOException | NoSuchAlgorithmException | InvalidKeySpecException e) {
+                        logger.error("Invalid keys", e);
+                        continue;
+                    }
+
+                    if (goal <= 0) {
+                        logger.error("Goal has to be greater than 0");
+                        continue;
+                    }
+
+                    if (deadline <= System.currentTimeMillis()) {
+                        logger.error("Deadline has to be in the future.");
+                        continue;
+                    }
+
+                    SignAbleContract signAbleContract = new SignAbleContract(
+                            System.currentTimeMillis(), deadline, goal, keyPair.getPublicKeyBytes(), title, description);
+                    byte[] rawContractBytes = ChainUtils.encodeToBytes(signAbleContract);
+                    byte[] signature;
+                    try {
+                        signature = keyPair.signData(rawContractBytes);
+                    } catch (NoSuchAlgorithmException | InvalidKeyException | SignatureException e) {
+                        logger.error("Failed to sign contract", e);
+                        continue;
+                    }
+                    Contract contract = signAbleContract.toContract(signature);
+
+                    //Submit
+                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    if (syncModule == null) {
+                        logger.error("Module not found");
+                        continue;
+                    }
+
+                    boolean accepted = syncModule.addNewContract(contract);
+                    if (accepted) {
+                        logger.info("Contract " + ChainUtils.bytesToBase64(contract.getContractId()) + " accepted");
+                        logger.info(ChainUtils.encodeToString(contract));
+                    } else {
+                        logger.error("Contract rejected");
+                    }
+                }
+                else if("list".equals(input[0])) {
+                    List<Contract> contractList = blockchain.listContracts();
+                    logger.info("Found " + contractList.size() + " projects total");
+                    for(Contract contract : contractList) {
+                        boolean running = contract.getDeadline() >= System.currentTimeMillis();
+                        logger.info("\n" + (running ? "[RUNNING]" : "[EXPIRED]")
+                                + " Address: " + ChainUtils.bytesToBase64(contract.getContractId()) + "\n"
+                                + "Expire: " + LocalDateTime.ofInstant(Instant.ofEpochMilli(contract.getDeadline()),
+                                TimeZone.getDefault().toZoneId()) + "\n"
+                                + "Goal: " +  contract.getGoal() + "\n"
+                                + "Owner: " + ChainUtils.bytesToBase64(contract.getOwnerPubKey()) + "\n"
+                                + "Project:\n" + contract.getTitle() + "\n" + contract.getDescription() + "\n"
+                                + "---------------------------------------------");
                     }
                 }
                 else {
@@ -461,15 +524,13 @@ public class App {
             }
 
             reader.close();
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             logger.error("Waiting for input failed", e);
         }
 
         try {
             testingNode.shutdown();
-        }
-        catch (IOException e) {
+        } catch (IOException e) {
             logger.error("Shutdown failed", e);
         }
     }
