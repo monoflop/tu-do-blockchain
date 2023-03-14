@@ -1,7 +1,5 @@
 package com.philippkutsch.tuchain.network;
 
-import com.philippkutsch.tuchain.network.protocol.Message;
-
 import javax.annotation.Nonnull;
 
 public class ConnectedNode {

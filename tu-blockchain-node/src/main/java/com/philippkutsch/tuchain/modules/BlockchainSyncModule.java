@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import java.util.List;
 
-//TODO chain is not synced correctly
 public class BlockchainSyncModule extends NodeModule {
     private static final Logger logger
             = LoggerFactory.getLogger(BlockchainSyncModule.class);
@@ -170,7 +169,9 @@ public class BlockchainSyncModule extends NodeModule {
             miningModule.stopMining();
             miningModule.removeTransactionsFromQueue(hashedBlock.getData().getTransactions());
             miningModule.removeContractsFromQueue(hashedBlock.getData().getContracts());
+
             node.getBlockchain().addBlock(hashedBlock);
+            miningModule.revalidateQueues();
             miningModule.startMining();
             return true;
         }
@@ -211,8 +212,6 @@ public class BlockchainSyncModule extends NodeModule {
                 logger.debug("Remote chain is longer than ours");
                 miningModule.stopMining();
 
-                //TODO remove all transactions from queue that are included in this blocks
-
                 int additionalBlocks = remoteChain.size() - ownChain.size();
                 List<HashedBlock> newBlocks = remoteChain.subList(
                         (remoteChain.size() - additionalBlocks),
@@ -223,6 +222,7 @@ public class BlockchainSyncModule extends NodeModule {
                     miningModule.removeTransactionsFromQueue(newBlock.getData().getTransactions());
                     node.getBlockchain().addBlock(newBlock);
                 }
+                miningModule.revalidateQueues();
                 miningModule.startMining();
             }
             else {

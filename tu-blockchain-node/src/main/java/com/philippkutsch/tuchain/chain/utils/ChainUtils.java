@@ -11,10 +11,19 @@ public final class ChainUtils {
     public static final Gson GSON = new GsonBuilder()
             .registerTypeAdapter(byte[].class, new Base64TypeAdapter())
             .create();
+    public static final Gson GSON_BEAUTY = new GsonBuilder()
+            .registerTypeAdapter(byte[].class, new Base64TypeAdapter())
+            .setPrettyPrinting()
+            .create();
 
     @Nonnull
     public static String encodeToString(@Nonnull Object object) {
         return ChainUtils.GSON.toJson(object);
+    }
+
+    @Nonnull
+    public static String encodeToBeautyString(@Nonnull Object object) {
+        return ChainUtils.GSON_BEAUTY.toJson(object);
     }
 
     @Nonnull

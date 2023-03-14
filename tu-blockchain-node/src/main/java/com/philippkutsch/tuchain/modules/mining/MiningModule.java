@@ -4,10 +4,10 @@ import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.philippkutsch.tuchain.Node;
-import com.philippkutsch.tuchain.chain.Contract;
-import com.philippkutsch.tuchain.chain.HashedBlock;
-import com.philippkutsch.tuchain.chain.Transaction;
+import com.philippkutsch.tuchain.chain.*;
 import com.philippkutsch.tuchain.chain.utils.ChainUtils;
+import com.philippkutsch.tuchain.contract.ContractException;
+import com.philippkutsch.tuchain.contract.ContractVm;
 import com.philippkutsch.tuchain.modules.ModuleLoadException;
 import com.philippkutsch.tuchain.modules.NodeModule;
 import com.philippkutsch.tuchain.network.protocol.NewBlockMessage;
@@ -100,6 +100,8 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
             return false;
         }
 
+        //TODO: Remove if double contract transaction
+
         transactionQueue.add(transaction);
 
         return true;
@@ -107,7 +109,7 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
 
     public boolean submitContract(@Nonnull Contract contract) {
         //TODO: Validate
-        //Check if transaction is already in queue
+        //Check if contract is already in queue
         boolean alreadyInQueue = contractQueue.stream()
                 .anyMatch((c) -> Arrays.equals(c.getContractId(), contract.getContractId()));
         if(alreadyInQueue) {
@@ -141,6 +143,26 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         }));
     }
 
+    //Called after a new block was added. Check for invalid transactions inside queue
+    public void revalidateQueues() {
+        transactionQueue.removeIf((t -> {
+            //TODO: Consider current queue for verification
+            //TODO: Remove if double contract transaction
+            TransactionVerificationUtils.VerificationResult result =
+                    TransactionVerificationUtils.verifyTransaction(
+                            node.getBlockchain(),
+                            t,
+                            true);
+            return !result.isSuccess();
+        }));
+
+        transactionQueue.removeIf(t ->
+                node.getBlockchain().findTransaction(t.getTransactionId()).isPresent());
+        contractQueue.removeIf((c ->
+            node.getBlockchain().findContract(c.getContractId()).isPresent()
+        ));
+    }
+
     public void startMining() {
         if(miningFuture != null) {
             logger.warn("Block mining already running");
@@ -157,6 +179,38 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
         transactionQueue.clear();
         contractQueue.clear();
 
+        //Run scvm for all contract transactions.
+        //Contract transactions are required to have only one input and one output
+        //TODO: check if there is only one transaction per contract and pubKey in queue
+        Blockchain blockchain = node.getBlockchain();
+        List<Transaction> contractOutputTransactions = new ArrayList<>();
+        for(Transaction transaction : transactionList) {
+            if(transaction.getInputs().length == 1
+                    && transaction.getOutputs().length >= 1
+                    && transaction.getOutputs()[0].getPubKey().length == 32) {
+                //Search contract
+                byte[] contractAddress = transaction.getOutputs()[0].getPubKey();
+                Optional<Contract> contractOptional = blockchain.findContract(contractAddress);
+                if(contractOptional.isEmpty()) {
+                    logger.warn("Invalid contract address " + ChainUtils.bytesToBase64(contractAddress)
+                            + " for transaction " + ChainUtils.bytesToBase64(transaction.getTransactionId()));
+                    continue;
+                }
+
+                //Execute contract
+                try {
+                    List<Transaction> output = ContractVm.run(contractOptional.get(), transaction, 0, blockchain);
+                    contractOutputTransactions.addAll(output);
+                }
+                catch (ContractException e) {
+                    logger.warn("Failed to execute contract for transaction "
+                            + ChainUtils.bytesToBase64(transaction.getTransactionId())
+                            +  "because " + e.getClass().getSimpleName());
+                }
+            }
+        }
+        transactionList.addAll(contractOutputTransactions);
+
         //Generate coinbase transaction
         Transaction coinbase = Transaction.buildCoinbaseTransaction(
                 System.currentTimeMillis(),
@@ -171,7 +225,7 @@ public class MiningModule extends NodeModule implements FutureCallback<HashedBlo
 
         contractList.sort(Comparator.comparing(Contract::getTimestamp));
 
-        miningFuture = node.getService().submit(new Miner(24,0, node.getBlockchain()
+        miningFuture = node.getService().submit(new Miner(20,0, node.getBlockchain()
                 .buildNextBlock(transactionList, contractList), null));
         Futures.addCallback(miningFuture, this, node.getService());
     }

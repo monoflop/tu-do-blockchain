@@ -139,14 +139,7 @@ public class TransactionVerificationUtils {
             int outputSum = 0;
             for(Transaction.Output output : transaction.getOutputs()) {
                 outputSum += output.getAmount();
-
-                //Check pupKey
-                try {
-                    new RsaKeys(output.getPubKey(), null);
-                }
-                catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-                    return VerificationResult.error(VerificationError.InvalidOutputPubKey);
-                }
+                //Do not verify pubKey because contract addresses are not valid pubKeys
             }
 
             //Check if sum of inputs = sum of outputs

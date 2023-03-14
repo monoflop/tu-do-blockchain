@@ -71,6 +71,18 @@ public class Transaction {
         return Hashing.sha256().hashBytes(transactionBytes).asBytes();
     }
 
+
+    public boolean isContractFormatted() {
+        boolean containsNoSignatures = true;
+        for(Transaction.SignedInput input : inputs) {
+            if(input.getSignature().length > 0) {
+                containsNoSignatures = false;
+                break;
+            }
+        }
+        return containsNoSignatures && timestamp == 0;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;

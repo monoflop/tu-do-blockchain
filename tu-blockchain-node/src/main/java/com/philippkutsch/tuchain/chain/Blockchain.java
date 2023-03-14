@@ -73,6 +73,17 @@ public class Blockchain {
         }
     }
 
+    @Nonnull
+    public Optional<HashedBlock> findBlock(long id) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            if(block.getId() == id) {
+                return Optional.of(block);
+            }
+        }
+        return Optional.empty();
+    }
+
     //List contracts
     @Nonnull
     public List<Contract> listContracts() {
@@ -98,6 +109,8 @@ public class Blockchain {
         return Optional.empty();
     }
 
+    //
+
     //Search for a transaction
     @Nonnull
     public Optional<Transaction> findTransaction(@Nonnull byte[] transactionId) {
@@ -111,6 +124,52 @@ public class Blockchain {
         }
         return Optional.empty();
     }
+
+    //Search for a transactions block
+    @Nonnull
+    public Optional<HashedBlock> findTransactionBlock(@Nonnull byte[] transactionId) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            for(Transaction transaction : block.getData().getTransactions()) {
+                if(Arrays.equals(transaction.getTransactionId(), transactionId)) {
+                    return Optional.of(block);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Nonnull
+    public Optional<Transaction> findReferencingTransaction(@Nonnull byte[] transactionId) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        for(HashedBlock block : blockListCopy) {
+            for (Transaction transaction : block.getData().getTransactions()) {
+                for(Transaction.Input input : transaction.getInputs()) {
+                    if(Arrays.equals(input.getTxId(), transactionId)) {
+                        return Optional.of(transaction);
+                    }
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
+    @Nonnull
+    public List<Transaction> findTransactionsTo(@Nonnull byte[] publicKey) {
+        List<HashedBlock> blockListCopy = getBlockchain();
+        List<Transaction> matchingTransactions = new ArrayList<>();
+        for(HashedBlock block : blockListCopy) {
+            for(Transaction transaction : block.getData().getTransactions()) {
+                for(Transaction.Output output : transaction.getOutputs()) {
+                    if(Arrays.equals(output.getPubKey(), publicKey)) {
+                        matchingTransactions.add(transaction);
+                    }
+                }
+            }
+        }
+        return matchingTransactions;
+    }
+
 
     @Nonnull
     private List<Transaction.Input> findTransactionInputs(
