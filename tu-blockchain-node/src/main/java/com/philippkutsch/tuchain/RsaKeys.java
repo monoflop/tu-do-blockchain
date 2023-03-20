@@ -11,11 +11,11 @@ import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 
-//Generate private key
-//openssl genrsa -out private.pem 2048
-//openssl pkcs8 -topk8 -inform PEM -outform DER -in private.pem -out private.der -nocrypt
-//Generate public key
-//openssl rsa -in private.pem -pubout -outform DER -out public.der
+/**
+ * RsaKeys utility class
+ *
+ * Holds keys and allows signing / verification
+ */
 public class RsaKeys {
     private final byte[] privateKeyBytes;
     private final byte[] publicKeyBytes;
@@ -112,24 +112,22 @@ public class RsaKeys {
         return privateKeyBytes != null;
     }
 
-
-
     @Nonnull
     private static PublicKey publicKeyFromBytes(@Nonnull byte[] bytes)
             throws NoSuchAlgorithmException, InvalidKeySpecException {
-        X509EncodedKeySpec spec =
+        X509EncodedKeySpec x509EncodedKeySpec =
                 new X509EncodedKeySpec(bytes);
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return keyFactory.generatePublic(spec);
+        return keyFactory.generatePublic(x509EncodedKeySpec);
     }
 
     @Nonnull
     private static PrivateKey privateKeyFromBytes(@Nonnull byte[] bytes)
             throws NoSuchAlgorithmException, InvalidKeySpecException{
-        PKCS8EncodedKeySpec spec =
+        PKCS8EncodedKeySpec pkcs8EncodedKeySpec =
                 new PKCS8EncodedKeySpec(bytes);
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
-        return keyFactory.generatePrivate(spec);
+        return keyFactory.generatePrivate(pkcs8EncodedKeySpec);
     }
 }
 

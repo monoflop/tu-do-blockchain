@@ -121,17 +121,6 @@ public class NodeManager implements ConnectionManager.Listener {
                 handshakeMessage.getKnownPeers().add(new Peer(connectedNode.getHost(), connectedNode.getPort()));
             }
 
-            //For small networks we need no advertising
-            //Advertise new node to the network
-            /*Message newNodeMessage = new NewNodeMessage(connectedNode.getName(),
-                    connectedNode.getHost(), connectedNode.getPort()).encode();
-            for(Map.Entry<String, ConnectedNode> node : connectedNodes.entrySet()) {
-                if(!node.getKey().equals(connectedNode.getKey())) {
-                    logger.debug("Advertising node " + connectedNode.getKey() + " to " + node.getKey());
-                    connectionManager.send(node.getValue().getConnection(), newNodeMessage);
-                }
-            }*/
-
             listener.onConnected(connectedNode);
 
             logger.debug("Node " + connectedNode.getKey() + " connected");

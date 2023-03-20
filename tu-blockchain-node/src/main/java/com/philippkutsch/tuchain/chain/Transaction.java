@@ -99,8 +99,8 @@ public class Transaction {
         return result;
     }
 
-    //To create a valid input and spent target outputs utxo.
-    //You have to own the private key that correspont to the outputs public key
+    //To create a valid input and spent target outputs UTXO.
+    //You have to own the private key that correspond to the outputs public key
     public static class Input {
         //Input transactionId
         protected final byte[] txId;
@@ -143,10 +143,6 @@ public class Transaction {
         }
     }
 
-    //https://bitcoin.stackexchange.com/questions/45693/how-is-a-transactions-output-signed
-    //https://developer.bitcoin.org/devguide/transactions.html
-    //https://en.bitcoin.it/wiki/Transaction
-    //https://developer.bitcoin.org/reference/transactions.html
     // Signature that unlocks output
     // Signature of all inputs and outputs without other input signatures.
     // Can be verified with referenced outputs public key

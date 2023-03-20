@@ -11,6 +11,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+/**
+ * PingModule
+ *
+ * Allows sending ping messages to other nodes and wait for a pong response.
+ */
 public class PingModule extends NodeModule {
     public PingModule(@Nonnull Node node)
             throws ModuleLoadException {

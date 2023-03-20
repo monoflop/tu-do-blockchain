@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 
+/**
+ * Wrapper for ConnectedNode
+ */
 public class RemoteNode {
     private static final Logger logger
             = LoggerFactory.getLogger(RemoteNode.class);

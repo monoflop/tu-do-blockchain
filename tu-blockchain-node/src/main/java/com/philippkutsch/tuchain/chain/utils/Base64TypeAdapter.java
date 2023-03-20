@@ -7,7 +7,11 @@ import com.google.gson.stream.JsonWriter;
 import java.io.IOException;
 import java.util.Base64;
 
-//Copied from https://gist.github.com/elucash/ee4d294cb0d920fc227d993aebf6d53c
+/**
+ * Base64 GSON type adapter
+ *
+ * Copied from https://gist.github.com/elucash/ee4d294cb0d920fc227d993aebf6d53c
+ */
 public class Base64TypeAdapter extends TypeAdapter<byte[]> {
     @Override
     public void write(JsonWriter out, byte[] value) throws IOException {

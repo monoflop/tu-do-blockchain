@@ -10,6 +10,9 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Implementation of the SCVM
+ */
 public class ContractVm {
     @Nonnull
     public static byte[] findSendingPubKey(

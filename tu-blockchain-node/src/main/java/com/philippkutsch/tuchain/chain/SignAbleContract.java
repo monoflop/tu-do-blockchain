@@ -1,8 +1,5 @@
 package com.philippkutsch.tuchain.chain;
 
-import com.google.common.hash.Hashing;
-import com.philippkutsch.tuchain.chain.utils.ChainUtils;
-
 import javax.annotation.Nonnull;
 import java.util.Arrays;
 import java.util.Objects;

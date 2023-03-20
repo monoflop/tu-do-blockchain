@@ -14,9 +14,12 @@ import java.net.Socket;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-//Handle all remote nodes
-//- Try to create a remote node from host and port
-//- Protocol: Client connection sends handshake first
+/**
+ * Handle all remote nodes
+ *
+ * - Try to create a remote node from host and port
+ * - Protocol: Client connection sends handshake first
+ */
 public class ConnectionManager implements NetworkConnection.Listener, NetworkServer.Listener {
     private static final Logger logger
             = LoggerFactory.getLogger(ConnectionManager.class);

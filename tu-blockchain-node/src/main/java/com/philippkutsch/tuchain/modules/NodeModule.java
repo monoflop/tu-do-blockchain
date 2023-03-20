@@ -4,6 +4,9 @@ import com.philippkutsch.tuchain.Node;
 
 import javax.annotation.Nonnull;
 
+/**
+ * Abstract blockchain node module
+ */
 public abstract class NodeModule implements NodeEnvironment {
     protected final Node node;
 

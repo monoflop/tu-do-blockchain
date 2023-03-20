@@ -15,6 +15,11 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
+/**
+ * Network
+ *
+ * Highest abstraction of blockchain network access
+ */
 public class Network implements NodeManager.Listener {
     private static final Logger logger
             = LoggerFactory.getLogger(Network.class);

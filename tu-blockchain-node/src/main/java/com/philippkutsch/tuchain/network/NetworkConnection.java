@@ -15,6 +15,9 @@ import java.net.Socket;
 import java.util.Scanner;
 import java.util.concurrent.Callable;
 
+/**
+ * Low level network connection
+ */
 public class NetworkConnection implements Callable<Void>, FutureCallback<Void> {
     private static final String ESCAPE_DELIMITER = "\n";
     private static final Logger logger

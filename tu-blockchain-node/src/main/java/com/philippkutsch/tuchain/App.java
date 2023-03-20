@@ -39,6 +39,11 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 
+/**
+ * App entry point
+ *
+ * TODO: Move commands and functionality to separate classes
+ */
 public class App {
     private static final Logger logger
             = LoggerFactory.getLogger(App.class);
@@ -205,10 +210,10 @@ public class App {
 
         //Build and start node
         logger.info("Starting network node " + config.getName() + " on port " + config.getPort());
-        TestingNode testingNode;
+        CrowdfundingNode crowdfundingNode;
         try {
             //noinspection ConstantConditions
-            testingNode = new TestingNode(config, rsaKeys, blockchain);
+            crowdfundingNode = new CrowdfundingNode(config, rsaKeys, blockchain);
         } catch (IOException e) {
             logger.error("Failed to create node", e);
             return;
@@ -251,15 +256,15 @@ public class App {
                 else if ("nodes".equals(input[0])) {
                     logger.info("Connected nodes:");
                     //Get node list
-                    List<RemoteNode> connectedNodeList = testingNode.getNetwork().getConnectedNodes();
+                    List<RemoteNode> connectedNodeList = crowdfundingNode.getNetwork().getConnectedNodes();
                     for (RemoteNode connectedNode : connectedNodeList) {
                         logger.info("Node '" + connectedNode.getConnectedNode().getName() + "' " + connectedNode.getConnectedNode().getHost()
                                 + ":" + connectedNode.getConnectedNode().getPort());
                     }
                 }
                 else if ("ping".equals(input[0])) {
-                    PingModule pingModule = testingNode.requireModule(PingModule.class);
-                    List<RemoteNode> connectedNodes = testingNode.getNetwork().getConnectedNodes();
+                    PingModule pingModule = crowdfundingNode.requireModule(PingModule.class);
+                    List<RemoteNode> connectedNodes = crowdfundingNode.getNetwork().getConnectedNodes();
 
                     if (connectedNodes.isEmpty()) {
                         logger.info("No nodes connected");
@@ -277,7 +282,7 @@ public class App {
                     }
                 }
                 else if ("blockchain".equals(input[0])) {
-                    List<HashedBlock> blockList = testingNode.getBlockchain().getBlockchain();
+                    List<HashedBlock> blockList = crowdfundingNode.getBlockchain().getBlockchain();
                     logger.info("Blockchain: " + blockList.size() + " blocks long");
                 }
                 else if ("block".equals(input[0])) {
@@ -298,7 +303,7 @@ public class App {
                         continue;
                     }
 
-                    List<HashedBlock> blockList = testingNode.getBlockchain().getBlockchain();
+                    List<HashedBlock> blockList = crowdfundingNode.getBlockchain().getBlockchain();
                     boolean blockFound = false;
                     for (HashedBlock block : blockList) {
                         if(block.getId() == id) {
@@ -323,7 +328,7 @@ public class App {
                     Optional<Transaction> transactionOptional = blockchain.findTransaction(txId);
                     Optional<HashedBlock> transactionBlockOptional = blockchain.findTransactionBlock(txId);
                     if(transactionOptional.isEmpty() || transactionBlockOptional.isEmpty()) {
-                        logger.info("Transaction not found");;
+                        logger.info("Transaction not found");
                         continue;
                     }
 
@@ -332,7 +337,7 @@ public class App {
                 }
                 else if ("save".equals(input[0])) {
                     try {
-                        Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(testingNode.blockchain));
+                        Files.writeString(blockchainFile.toPath(), ChainUtils.encodeToString(crowdfundingNode.blockchain));
                         logger.info("Chain saved!");
                     } catch (IOException e) {
                         logger.error("Failed to save blockchain", e);
@@ -418,7 +423,7 @@ public class App {
                     }
 
                     //Search input transaction
-                    Optional<Transaction> targetTransactionOptional = testingNode.getBlockchain().findTransaction(txId);
+                    Optional<Transaction> targetTransactionOptional = crowdfundingNode.getBlockchain().findTransaction(txId);
                     if (targetTransactionOptional.isEmpty()) {
                         logger.error("Transaction " + input[1] + " not found");
                         continue;
@@ -463,7 +468,7 @@ public class App {
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -552,7 +557,7 @@ public class App {
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputList.toArray(new Transaction.SignedInput[0]), outputs);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -609,7 +614,7 @@ public class App {
                     Contract contract = signAbleContract.toContract(signature);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -675,7 +680,7 @@ public class App {
                     }
 
                     //Search input transaction
-                    Optional<Transaction> targetTransactionOptional = testingNode.getBlockchain().findTransaction(txId);
+                    Optional<Transaction> targetTransactionOptional = crowdfundingNode.getBlockchain().findTransaction(txId);
                     if (targetTransactionOptional.isEmpty()) {
                         logger.error("Transaction " + input[1] + " not found");
                         continue;
@@ -720,7 +725,7 @@ public class App {
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -755,7 +760,7 @@ public class App {
                     }
 
                     //Search input transaction
-                    Optional<Transaction> targetTransactionOptional = testingNode.getBlockchain().findTransaction(txId);
+                    Optional<Transaction> targetTransactionOptional = crowdfundingNode.getBlockchain().findTransaction(txId);
                     if (targetTransactionOptional.isEmpty()) {
                         logger.error("Transaction " + input[1] + " not found");
                         continue;
@@ -792,7 +797,7 @@ public class App {
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -880,7 +885,7 @@ public class App {
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputList.toArray(new Transaction.SignedInput[0]), outputs);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -945,7 +950,7 @@ public class App {
                     Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
 
                     //Submit
-                    BlockchainSyncModule syncModule = testingNode.getModule(BlockchainSyncModule.class);
+                    BlockchainSyncModule syncModule = crowdfundingNode.getModule(BlockchainSyncModule.class);
                     if (syncModule == null) {
                         logger.error("Module not found");
                         continue;
@@ -970,7 +975,7 @@ public class App {
         }
 
         try {
-            testingNode.shutdown();
+            crowdfundingNode.shutdown();
         } catch (IOException e) {
             logger.error("Shutdown failed", e);
         }

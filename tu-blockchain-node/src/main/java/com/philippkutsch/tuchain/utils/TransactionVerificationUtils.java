@@ -14,6 +14,9 @@ import java.security.spec.InvalidKeySpecException;
 import java.util.Arrays;
 import java.util.Optional;
 
+/**
+ * Utility class for transaction verification
+ */
 public class TransactionVerificationUtils {
     private TransactionVerificationUtils() {
 

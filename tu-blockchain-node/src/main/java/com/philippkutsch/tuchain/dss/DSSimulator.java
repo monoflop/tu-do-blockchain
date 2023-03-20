@@ -15,6 +15,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * DSSimulator
+ *
+ * Very simple simulation of a double spending attack
+ */
 public class DSSimulator {
     private static final String INITIAL_BLOCKCHAIN = "{\"blockList\":[{\"timestamp\":1677938378295,\"nuOnce\":78901825,\"hash\":\"AAAAzJDi3v8OCKv8qAevudm8/KnGRDz5dtnamXEOA88\",\"id\":1,\"prevHash\":\"\",\"data\":{\"transactions\":[],\"contracts\":[]}}]}";
 

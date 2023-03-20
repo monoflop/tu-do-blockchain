@@ -12,14 +12,16 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import java.io.IOException;
 
-//Local implementation
-public class TestingNode extends Node {
+/**
+ * Top level implementation of a crowdfunding blockchain node
+ */
+public class CrowdfundingNode extends Node {
     private static final Logger logger
-            = LoggerFactory.getLogger(TestingNode.class);
+            = LoggerFactory.getLogger(CrowdfundingNode.class);
 
-    public TestingNode(@Nonnull Config config,
-                       @Nonnull RsaKeys rsaKeys,
-                       @Nonnull Blockchain blockchain)
+    public CrowdfundingNode(@Nonnull Config config,
+                            @Nonnull RsaKeys rsaKeys,
+                            @Nonnull Blockchain blockchain)
             throws IOException {
         super(config, rsaKeys, blockchain);
         try {

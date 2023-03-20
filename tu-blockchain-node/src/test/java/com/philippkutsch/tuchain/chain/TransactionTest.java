@@ -43,28 +43,4 @@ public class TransactionTest {
         String idString = ChainUtils.bytesToBase64(transactionId);
         assert coinbaseTransactionId.equals(idString);
     }
-
-    /*@Test
-    public void transactionSignatureTest()
-            throws NoSuchAlgorithmException,
-            InvalidKeyException,
-            SignatureException {
-        //Create a transaction that withdraws coinbase reward
-        Transaction.Input input = new Transaction.Input(coinbaseTransaction.getTransactionId(), 0);
-        Transaction.Output output = new Transaction.Output(100, rsaKeys.getPublicKeyBytes());
-        Transaction.Input[] inputs = { input };
-        Transaction.Output[] outputs = { output };
-
-        //Create signature
-        SignAbleTransaction signAbleTransaction = new SignAbleTransaction(1669935899L, inputs, outputs);
-        byte[] rawTransactionBytes = ChainUtils.encodeToBytes(signAbleTransaction);
-
-        //Sign for each input
-        byte[] signature = rsaKeys.signData(rawTransactionBytes);
-        Transaction.SignedInput signedInput = input.toSignedInput(signature);
-        Transaction.SignedInput[] signedInputs = { signedInput };
-
-        Transaction transaction = new Transaction(signAbleTransaction.getTimestamp(), signedInputs, outputs);
-        System.out.println(ChainUtils.encodeToString(transaction));
-    }*/
 }

@@ -13,13 +13,13 @@ df.groupby('type')['block'].plot(drawstyle="steps", legend=True)
 
 handles, labels = plt.gca().get_legend_handles_labels() 
 line1 = Line2D([0], [0], label='Startblock', color='b', linestyle=(0, (5,10)), linewidth="0.5")
-line2 = Line2D([0], [0], label='Verifikation k=8', color='r', linestyle=(0, (5,10)), linewidth="0.5")
+line2 = Line2D([0], [0], label='Verifikation z=8', color='r', linestyle=(0, (5,10)), linewidth="0.5")
 
 handles.extend([line1, line2])
 plt.legend(handles=handles)
 
 plt.axhline(y=2, color='b', linestyle=(0, (5,10)), linewidth="0.5")
 plt.axhline(y=10, color='r', linestyle=(0, (5,10)), linewidth="0.5")
-plt.xlabel('Zeit (ms)')
+plt.xlabel('Simulationszeit (in ms.)')
 plt.ylabel('Blockchainlänge')
 plt.show()

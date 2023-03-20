@@ -5,6 +5,9 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.Callable;
 
+/**
+ * Async acceptor for socket connections
+ */
 public class NetworkAcceptor implements Callable<Socket> {
     private final ServerSocket serverSocket;
 

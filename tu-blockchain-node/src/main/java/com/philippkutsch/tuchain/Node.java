@@ -20,6 +20,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Abstract node implementation.
+ *
+ * Allows to extend basic functionality with modules
+ *
+ * LowLevel handler for:
+ * - Executor service
+ * - Config
+ * - RsaKeys (Loaded from config)
+ * - Blockchain
+ * - Network
+ */
 public abstract class Node implements Network.Listener {
     private static transient final Logger logger
             = LoggerFactory.getLogger(Node.class);
@@ -31,7 +43,6 @@ public abstract class Node implements Network.Listener {
     protected final RsaKeys rsaKeys;
     protected final Blockchain blockchain;
     protected Network network;
-
 
     private final List<NodeModule> moduleList;
 
@@ -53,7 +64,6 @@ public abstract class Node implements Network.Listener {
     protected void run() throws IOException {
         this.network = new Network(config.getName(), config.getPort(), service, this, config.getKnownPeers());
     }
-
 
     @Override
     public void onMessage(

@@ -11,6 +11,11 @@ import java.security.NoSuchAlgorithmException;
 import java.security.spec.InvalidKeySpecException;
 import java.util.UUID;
 
+/**
+ * Key-Pair container class
+ *
+ * Wraps private and public key.
+ */
 public class Wallet {
     private final byte[] privateKey;
     private final byte[] publicKey;

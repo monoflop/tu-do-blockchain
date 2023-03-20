@@ -12,6 +12,11 @@ import javax.annotation.Nullable;
 import java.io.IOException;
 import java.net.Socket;
 
+/**
+ * NetworkServer
+ *
+ * Listens for new sockets
+ */
 public class NetworkServer implements FutureCallback<Socket> {
     private static final Logger logger
             = LoggerFactory.getLogger(NetworkServer.class);

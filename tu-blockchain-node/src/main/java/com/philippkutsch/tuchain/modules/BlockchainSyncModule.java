@@ -15,6 +15,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nonnull;
 import java.util.List;
 
+/**
+ * BlockchainSyncModule
+ *
+ * Tries to sync the blockchain state with other nodes
+ */
 public class BlockchainSyncModule extends NodeModule {
     private static final Logger logger
             = LoggerFactory.getLogger(BlockchainSyncModule.class);

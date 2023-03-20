@@ -11,6 +11,9 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.*;
 
+/**
+ * Utility class for blockchain verification
+ */
 public class BlockchainVerificationUtils {
     private BlockchainVerificationUtils() {
 

@@ -2,6 +2,11 @@ package com.philippkutsch.tuchain.network;
 
 import javax.annotation.Nonnull;
 
+/**
+ * Wrapper for NetworkConnection
+ *
+ * Contains additional information received during handshake.
+ */
 public class ConnectedNode {
     private final NetworkConnection connection;
     private final String name;

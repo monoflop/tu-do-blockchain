@@ -22,6 +22,11 @@ import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
+/**
+ * MiningModule
+ *
+ * Handles mining process
+ */
 public class MiningModule extends NodeModule implements FutureCallback<HashedBlock>  {
     private static final Logger logger
             = LoggerFactory.getLogger(MiningModule.class);

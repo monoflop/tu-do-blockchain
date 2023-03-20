@@ -8,6 +8,11 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.concurrent.Callable;
 
+/**
+ * Miner
+ *
+ * Customizable PoW calculation
+ */
 public class Miner implements Callable<HashedBlock> {
     private final int hashTargetBits;
     private final int maxHashPerSecond;
